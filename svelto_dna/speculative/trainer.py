@@ -27,6 +27,7 @@ class DraftHeadTrainer:
         draft_heads: SpeculativeDraftHeads,
         optimizer: Optional[torch.optim.Optimizer] = None,
         loss_fn: Optional[SpeculativeDraftLoss] = None,
+        ignore_index: Optional[int] = 0,
         lr: float = 1e-3,
         weight_decay: float = 1e-2,
         device: Optional[Union[str, torch.device]] = None,
@@ -47,7 +48,11 @@ class DraftHeadTrainer:
         self.draft_heads.to(self.device)
 
         # Setup loss function with gamma=0.85
-        self.loss_fn = loss_fn if loss_fn is not None else SpeculativeDraftLoss(gamma=0.85)
+        self.loss_fn = (
+            loss_fn
+            if loss_fn is not None
+            else SpeculativeDraftLoss(gamma=0.85, ignore_index=ignore_index)
+        )
 
         # Setup optimizer only on draft head parameters
         if optimizer is None:

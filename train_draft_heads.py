@@ -77,6 +77,12 @@ def parse_args() -> argparse.Namespace:
         help="Foundation backbone model name (default: 'mock').",
     )
     parser.add_argument(
+        "--ignore-index",
+        type=int,
+        default=0,
+        help="Token class index to ignore in cross-entropy loss (default: 0 for <PAD>). Set to negative value for none.",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default=None,
@@ -126,9 +132,11 @@ def main() -> int:
         return 1
 
     # 3. Setup trainer
+    ignore_idx = args.ignore_index if args.ignore_index >= 0 else None
     trainer = DraftHeadTrainer(
         backbone=backbone,
         draft_heads=draft_heads,
+        ignore_index=ignore_idx,
         lr=args.lr,
         device=args.device,
     )
@@ -138,7 +146,7 @@ def main() -> int:
     torch.manual_seed(42)
     # Token IDs between 1 and 4 for backbone input (A, C, G, T)
     dummy_input_ids = torch.randint(1, 5, (args.batch_size, args.seq_len))
-    # Target class IDs between 0 and num_classes - 1
+    # Target class IDs between 0 and num_classes - 1 (with ignore_index testing)
     dummy_target_ids = torch.randint(0, args.num_classes, (args.batch_size, args.seq_len))
 
     # 5. Run verification training steps
@@ -160,7 +168,7 @@ def main() -> int:
             )
             print(f"    Step {step:02d}/{args.steps:02d} | Loss: {current_loss:.4f} | {head_loss_str} | GradNorm: {step_metrics['total_grad_norm']:.4f}")
 
-    # 6. Verify forward pass shape conformity
+    # 6. Verify forward pass shape conformity & candidate prediction helpers
     with torch.no_grad():
         backbone_out = backbone(dummy_input_ids)
         penultimate = backbone_out.penultimate_hidden_state
@@ -170,6 +178,17 @@ def main() -> int:
             f"Shape mismatch: expected {expected_shape}, got {draft_out.shape}"
         )
         print(f"[*] Forward pass tensor shape verified: {draft_out.shape} == (K={args.num_heads}, B={args.batch_size}, L={args.seq_len}, C={args.num_classes})")
+
+        # Tree verification helpers (Issue #4 readiness)
+        probs = draft_heads.get_candidate_probabilities(penultimate, temperature=0.8)
+        assert probs.shape == expected_shape
+        expected_ones = torch.ones(args.num_heads, args.batch_size, args.seq_len, device=probs.device)
+        assert torch.allclose(probs.sum(dim=-1), expected_ones, atol=1e-5)
+        print(f"[*] Candidate probabilities verified: {probs.shape} (sums to 1.0 along class dim)")
+
+        top1_candidates = draft_heads.predict_candidates(penultimate, top_k=1)
+        assert top1_candidates.shape == (args.num_heads, args.batch_size, args.seq_len, 1)
+        print(f"[*] Top-1 candidates verified: {top1_candidates.shape} (tree verification ready)")
 
     # 7. Verify parameter isolation invariants
     for name, param in backbone.named_parameters():

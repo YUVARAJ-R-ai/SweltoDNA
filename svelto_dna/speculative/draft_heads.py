@@ -200,6 +200,53 @@ class SpeculativeDraftHeads(nn.Module):
         # Stack along dim 0 to produce (K, B, L, C)
         return torch.stack(head_outputs, dim=0)
 
+    def get_candidate_probabilities(
+        self,
+        hidden_states: torch.Tensor,
+        temperature: float = 1.0,
+    ) -> torch.Tensor:
+        """
+        Computes candidate draft probabilities across all K heads via temperature-scaled softmax.
+
+        Args:
+            hidden_states: Penultimate representations tensor of shape (B, L, D).
+            temperature: Softmax temperature parameter (must be strictly > 0.0).
+
+        Returns:
+            Candidate probabilities tensor of shape (K, B, L, C).
+        """
+        if temperature <= 0.0:
+            raise ValueError(f"temperature must be strictly positive, got {temperature}")
+
+        logits = self.forward(hidden_states)
+        if temperature != 1.0:
+            logits = logits / temperature
+        return F.softmax(logits, dim=-1)
+
+    def predict_candidates(
+        self,
+        hidden_states: torch.Tensor,
+        top_k: int = 1,
+    ) -> torch.Tensor:
+        """
+        Extracts top-k candidate token/class indices across all K heads for tree decoding.
+
+        Args:
+            hidden_states: Penultimate representations tensor of shape (B, L, D).
+            top_k: Number of highest-probability candidate classes to retain.
+
+        Returns:
+            Candidate token indices tensor of shape (K, B, L, top_k).
+        """
+        if top_k < 1 or top_k > self._num_classes:
+            raise ValueError(
+                f"top_k must be between 1 and num_classes ({self._num_classes}), got {top_k}"
+            )
+
+        logits = self.forward(hidden_states)
+        _, indices = torch.topk(logits, k=top_k, dim=-1)
+        return indices
+
 
 class SpeculativeDraftLoss(nn.Module):
     """
@@ -214,10 +261,12 @@ class SpeculativeDraftLoss(nn.Module):
         self,
         gamma: float = 0.85,
         reduction: str = "mean",
+        ignore_index: Optional[int] = 0,
     ) -> None:
         super().__init__()
         self.gamma = gamma
         self.reduction = reduction
+        self.ignore_index = ignore_index
 
     def get_lambdas(
         self,
@@ -291,17 +340,35 @@ class SpeculativeDraftLoss(nn.Module):
             flat_logits = head_logits.reshape(-1, num_classes)
             flat_targets = head_targets.reshape(-1, num_classes) if is_soft_target else head_targets.reshape(-1)
 
+            ce_kwargs = {"reduction": self.reduction}
+            if not is_soft_target and self.ignore_index is not None:
+                ce_kwargs["ignore_index"] = self.ignore_index
+
             if attention_mask is not None:
                 # Target is valid only if both source t and target t+k are unmasked
                 valid_mask = (attention_mask[:, :seq_len - k] & attention_mask[:, k:]).reshape(-1).bool()
                 if valid_mask.sum() > 0:
                     selected_logits = flat_logits[valid_mask]
                     selected_targets = flat_targets[valid_mask]
-                    loss_k = F.cross_entropy(selected_logits, selected_targets, reduction=self.reduction)
+                    if (
+                        not is_soft_target
+                        and self.ignore_index is not None
+                        and (selected_targets != self.ignore_index).sum() == 0
+                    ):
+                        loss_k = torch.tensor(0.0, device=device, dtype=draft_logits.dtype)
+                    else:
+                        loss_k = F.cross_entropy(selected_logits, selected_targets, **ce_kwargs)
                 else:
                     loss_k = torch.tensor(0.0, device=device, dtype=draft_logits.dtype)
             else:
-                loss_k = F.cross_entropy(flat_logits, flat_targets, reduction=self.reduction)
+                if (
+                    not is_soft_target
+                    and self.ignore_index is not None
+                    and (flat_targets != self.ignore_index).sum() == 0
+                ):
+                    loss_k = torch.tensor(0.0, device=device, dtype=draft_logits.dtype)
+                else:
+                    loss_k = F.cross_entropy(flat_logits, flat_targets, **ce_kwargs)
 
             weighted_loss_k = lambda_k * loss_k
             total_loss = total_loss + weighted_loss_k

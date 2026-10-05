@@ -152,6 +152,34 @@ class TestSpeculativeDraftHeads:
             assert head.fc2.weight.grad is not None
             assert head.res_proj.weight.grad is not None
 
+    def test_candidate_probabilities(self):
+        """Verify softmax candidate probabilities helper."""
+        module = SpeculativeDraftHeads(num_heads=3, hidden_dim=64, proj_dim=32, num_classes=4)
+        h = torch.randn(2, 16, 64)
+        probs = module.get_candidate_probabilities(h, temperature=0.7)
+        assert probs.shape == (3, 2, 16, 4)
+        assert torch.all(probs >= 0.0)
+        assert torch.all(probs <= 1.0)
+        assert torch.allclose(probs.sum(dim=-1), torch.ones(3, 2, 16), atol=1e-5)
+
+        with pytest.raises(ValueError, match="temperature must be strictly positive"):
+            module.get_candidate_probabilities(h, temperature=0.0)
+
+    def test_predict_candidates_top_k(self):
+        """Verify top-k candidate prediction indices for downstream tree decoding."""
+        module = SpeculativeDraftHeads(num_heads=3, hidden_dim=64, proj_dim=32, num_classes=4)
+        h = torch.randn(2, 16, 64)
+        top1 = module.predict_candidates(h, top_k=1)
+        assert top1.shape == (3, 2, 16, 1)
+
+        top2 = module.predict_candidates(h, top_k=2)
+        assert top2.shape == (3, 2, 16, 2)
+
+        with pytest.raises(ValueError, match="top_k must be between 1 and"):
+            module.predict_candidates(h, top_k=0)
+        with pytest.raises(ValueError, match="top_k must be between 1 and"):
+            module.predict_candidates(h, top_k=5)
+
 
 class TestSpeculativeDraftLoss:
     """Tests for SpeculativeDraftLoss discounted multi-target cross-entropy."""
@@ -208,6 +236,28 @@ class TestSpeculativeDraftLoss:
         target_ids = torch.randint(0, 4, (2, 3))
         with pytest.raises(ValueError, match="Sequence length L.*must be strictly greater"):
             loss_fn(draft_logits, target_ids)
+
+    def test_loss_with_ignore_index(self):
+        """Verify tokens with ignore_index (e.g. 0 for <PAD>) are excluded from loss."""
+        K, B, L, C = 2, 1, 8, 4
+        draft_logits = torch.randn(K, B, L, C, requires_grad=True)
+        # All target tokens set to 0 (padding)
+        target_ids = torch.zeros((B, L), dtype=torch.long)
+
+        loss_fn_ignore = SpeculativeDraftLoss(gamma=0.85, ignore_index=0)
+        total_loss, _ = loss_fn_ignore(draft_logits, target_ids)
+        # When all tokens are padding, loss should be 0.0 (no NaN)
+        assert total_loss.item() == 0.0
+
+        # Partial padding
+        target_ids_partial = torch.tensor([[0, 1, 0, 2, 0, 3, 0, 1]])
+        loss_partial, _ = loss_fn_ignore(draft_logits, target_ids_partial)
+        assert loss_partial.item() > 0.0
+
+        # Without ignore_index, class 0 is included
+        loss_fn_no_ignore = SpeculativeDraftLoss(gamma=0.85, ignore_index=None)
+        loss_all_zeros, _ = loss_fn_no_ignore(draft_logits, target_ids)
+        assert loss_all_zeros.item() > 0.0
 
 
 class TestDraftHeadTrainer:

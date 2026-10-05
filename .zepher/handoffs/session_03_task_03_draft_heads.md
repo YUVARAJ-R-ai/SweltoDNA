@@ -13,10 +13,15 @@
   4. Implemented `SpeculativeDraftLoss` in `svelto_dna/speculative/draft_heads.py`:
      - Multi-target cross-entropy loss over future sequence positions $t+k$.
      - Geometric discount weighting $\lambda_k = \gamma^{k-1}$ with $\gamma = 0.85$.
+     - Exposes `ignore_index: Optional[int] = 0` (defaulting to 0 for `GenomicTokenizer` `<PAD>`) preventing penalization/optimization on padded tokens when attention masks are omitted, with zero-loss fallback when all tokens are masked.
      - Robust support for attention masking and continuous splice target probabilities.
-  5. Built `DraftHeadTrainer` in `svelto_dna/speculative/trainer.py` and standalone verification CLI `train_draft_heads.py`:
+  5. Tree Verification Readiness for Issue #4 (`svelto_dna/speculative/draft_heads.py`):
+     - Added `get_candidate_probabilities(hidden_states, temperature=1.0)` returning normalized softmax probabilities $(K, B, L, C)$.
+     - Added `predict_candidates(hidden_states, top_k=1)` returning top-$k$ token prediction indices $(K, B, L, \text{top\_k})$ for DAG candidate tree construction.
+  6. Built `DraftHeadTrainer` in `svelto_dna/speculative/trainer.py` and standalone verification CLI `train_draft_heads.py`:
      - Strictly guarantees base foundation backbone remains 100% frozen (`trainable_parameters == 0`, `p.grad is None`).
      - Verifies non-zero gradients on draft heads and successful loss reduction during optimization.
-  6. Implemented 23 unit tests in `tests/test_draft_heads.py` covering shapes, parameter budget, gradient flow, and parameter isolation. Full test suite passing with 42/42 tests.
+     - Supports `--ignore-index`, `--num-heads`, `--num-classes`, etc.
+  7. Implemented 26 unit tests in `tests/test_draft_heads.py` covering shapes, parameter budget, gradient flow, candidate probabilities, top-$k$ extraction, ignore_index masking, and parameter isolation. Full test suite passing with 45/45 tests.
 - **Next Actions:**
-  - Proceed with tree attention DAG masking and verification engine or dataset extraction.
+  - Proceed with Sprint 1 Task #4 (Medusa-style DAG tree attention verification engine) or Task #2 (ClinVar splice disruption dataset).
