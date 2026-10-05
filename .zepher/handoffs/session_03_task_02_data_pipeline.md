@@ -10,6 +10,9 @@
   5. Implemented `verify_zero_leakage` and `partition_by_chromosomes` in `svelto_dna/data/leakage.py`, strictly enforcing disjoint autosome group assignments.
   6. Implemented `compute_splice_metrics` and `compute_top_k_accuracy` in `svelto_dna/data/benchmark.py`, computing Top-1, Top-k, ROC-AUC, and PR-AUC under severe class imbalance (>100:1 ratio).
   7. Built CLI entry points `scripts/extract_splice_data.py` and `scripts/eval_splice_benchmark.py`, generating standardized telemetry `splice_benchmark_telemetry.json`.
-  8. Created comprehensive unit test suites in `tests/test_data_pipeline.py` and `tests/test_benchmark_eval.py`, with all 32 repository tests passing (100% pass rate).
+  8. Created comprehensive unit test suites in `tests/test_data_pipeline.py` and `tests/test_benchmark_eval.py`.
+  9. Addressed Lead Coordinator review findings: added `--draft-heads-checkpoint` support to `scripts/eval_splice_benchmark.py` for direct downstream integration with `SpeculativeDraftHeads` from Issue #3.
+  10. Added explicit single-class exception guards with logging in `svelto_dna/data/benchmark.py` to prevent `ValueError` crashes on batches with 0 positive splice sites, with all 34 unit tests passing (100% pass rate).
 - **Next Actions:**
   - Proceed with Sprint 1 Task #3 (`[Speculative-ML] Auxiliary Speculative Draft Heads`).
+
