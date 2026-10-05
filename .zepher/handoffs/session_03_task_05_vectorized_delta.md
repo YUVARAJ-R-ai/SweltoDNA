@@ -18,6 +18,11 @@
      - Canonical splice site masking.
      - Identity invariance ($P_{\text{ref}} == P_{\text{mut}} \implies \Delta = 0$).
      - Batched 3D tensor processing `(B, L, 3)`.
-  7. All 30 tests in the project pass with 100% success (`uv run --extra dev pytest`).
+  7. Addressed review findings from lead coordinator:
+     - Fixed batched peak extraction for 3D tensors ($B > 1$) to compute and return per-sample peak deltas, positions, and components (`peak_deltas`, `peak_positions`, `peak_components`) instead of hardcoding item 0.
+     - Updated canonical splice site masking to use `-float('inf')` fill when `clamp_non_negative=False` to prevent masked negative-difference sites from erroneously becoming peaks.
+     - Added dedicated unit tests verifying $B > 1$ peak extraction and negative delta canonical masking.
+  8. All 31 tests in the project pass with 100% success (`uv run --extra dev pytest`).
 - **Next Actions:**
   - Proceed with Task #6 (`[Backend-API] High-Performance FastAPI WebSocket Streaming Engine`) or Task #3 (`[Speculative-ML] Auxiliary Speculative Draft Heads`).
+
