@@ -40,8 +40,8 @@ checkpoints/
 models/weights/
 
 # Data / Datasets
-data/
-datasets/
+/data/
+/datasets/
 *.fa
 *.fasta
 *.vcf
