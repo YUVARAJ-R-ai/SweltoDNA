@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "svelto-dna"
+version = "0.1.0"
+description = "Speculative Draft Verification & Genomic Inference Architecture"
+authors = [
+    { name = "SweltoDNA Team", email = "research@sweltodna.ai" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.30.0",
+    "einops>=0.6.0",
+    "pydantic>=2.0.0",
+    "psutil>=5.9.0",
+    "numpy>=1.24.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["svelto_dna*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

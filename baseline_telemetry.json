@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-10-05T12:28:51Z",
+  "system": {
+    "os": "Linux",
+    "os_release": "7.0.10-zen1",
+    "machine": "x86_64",
+    "python_version": "3.11.15",
+    "torch_version": "2.14.1+cpu",
+    "device": "cpu",
+    "is_cuda": false,
+    "memory_metric_type": "cpu_rss_mb"
+  },
+  "model_config": {
+    "model_name": "mock",
+    "is_mock": true,
+    "trainable_parameters": 0,
+    "total_parameters": 3625478,
+    "target_dtype": "torch.float32"
+  },
+  "metrics": [
+    {
+      "seq_length": 1024,
+      "mean_latency_ms": 14.317,
+      "std_latency_ms": 1.097,
+      "median_latency_ms": 14.09,
+      "p95_latency_ms": 15.738,
+      "min_latency_ms": 12.526,
+      "max_latency_ms": 15.844,
+      "peak_memory_mb": 280.58,
+      "throughput_nt_per_sec": 71521.7,
+      "iterations": 10
+    },
+    {
+      "seq_length": 2048,
+      "mean_latency_ms": 34.566,
+      "std_latency_ms": 4.022,
+      "median_latency_ms": 33.716,
+      "p95_latency_ms": 41.181,
+      "min_latency_ms": 29.539,
+      "max_latency_ms": 44.252,
+      "peak_memory_mb": 296.95,
+      "throughput_nt_per_sec": 59249.2,
+      "iterations": 10
+    },
+    {
+      "seq_length": 5000,
+      "mean_latency_ms": 105.247,
+      "std_latency_ms": 7.413,
+      "median_latency_ms": 105.028,
+      "p95_latency_ms": 115.49,
+      "min_latency_ms": 94.977,
+      "max_latency_ms": 116.461,
+      "peak_memory_mb": 328.68,
+      "throughput_nt_per_sec": 47507.1,
+      "iterations": 10
+    },
+    {
+      "seq_length": 10000,
+      "mean_latency_ms": 224.491,
+      "std_latency_ms": 19.743,
+      "median_latency_ms": 220.76,
+      "p95_latency_ms": 255.834,
+      "min_latency_ms": 202.583,
+      "max_latency_ms": 276.027,
+      "peak_memory_mb": 382.47,
+      "throughput_nt_per_sec": 44545.1,
+      "iterations": 10
+    }
+  ]
+}
