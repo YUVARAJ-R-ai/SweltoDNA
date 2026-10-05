@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         help="Backbone model ID or 'mock' for local verification oracle.",
     )
     parser.add_argument(
+        "--draft-heads-checkpoint",
+        type=str,
+        default=None,
+        help="Optional path to trained SpeculativeDraftHeads checkpoint (.pt/.pth) from Issue #3 for downstream draft benchmarking.",
+    )
+    parser.add_argument(
         "--output-telemetry",
         type=str,
         default="splice_benchmark_telemetry.json",
@@ -112,8 +118,36 @@ def main() -> int:
         model_name=args.model_name,
         device="cpu",
     )
-    head = SpliceClassificationHead(hidden_dim=backbone.hidden_dim, seed=args.seed)
-    head.eval()
+
+    draft_heads_module = None
+    head = None
+
+    if args.draft_heads_checkpoint:
+        ckpt_path = Path(args.draft_heads_checkpoint)
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Draft heads checkpoint not found at: {ckpt_path}")
+        print(f"Loading speculative draft heads from checkpoint: {ckpt_path}")
+        try:
+            from svelto_dna.speculative.draft_heads import SpeculativeDraftHeads
+            draft_heads_module = SpeculativeDraftHeads(hidden_dim=backbone.hidden_dim)
+            loaded_ckpt = torch.load(ckpt_path, map_location="cpu")
+            state_dict = loaded_ckpt.get("state_dict", loaded_ckpt) if isinstance(loaded_ckpt, dict) else loaded_ckpt
+            draft_heads_module.load_state_dict(state_dict)
+            draft_heads_module.eval()
+            print("✓ Successfully loaded SpeculativeDraftHeads from svelto_dna.speculative.draft_heads.")
+        except ImportError:
+            print("Note: svelto_dna.speculative.draft_heads not yet in workspace; loading onto classification fallback head.")
+            head = SpliceClassificationHead(hidden_dim=backbone.hidden_dim, seed=args.seed)
+            loaded_ckpt = torch.load(ckpt_path, map_location="cpu")
+            state_dict = loaded_ckpt.get("state_dict", loaded_ckpt) if isinstance(loaded_ckpt, dict) else loaded_ckpt
+            try:
+                head.load_state_dict(state_dict)
+            except Exception as e:
+                print(f"Warning: Could not load exact state dict: {e}")
+            head.eval()
+    else:
+        head = SpliceClassificationHead(hidden_dim=backbone.hidden_dim, seed=args.seed)
+        head.eval()
 
     all_y_true = []
     all_y_probs = []
@@ -128,8 +162,17 @@ def main() -> int:
             attn_mask = encoding["attention_mask"]
 
             out = backbone(input_ids=input_ids, attention_mask=attn_mask)
-            hidden = out.last_hidden_state
-            probs = head(hidden).squeeze(0).cpu().numpy()  # (L, 3)
+
+            if draft_heads_module is not None:
+                # Downstream SpeculativeDraftHeads receives penultimate_hidden_state
+                draft_out = draft_heads_module(out.penultimate_hidden_state)
+                probs_tensor = draft_out[0] if isinstance(draft_out, tuple) else draft_out
+                if probs_tensor.ndim == 4:
+                    probs_tensor = probs_tensor[:, 0]
+                probs = torch.softmax(probs_tensor, dim=-1).squeeze(0).cpu().numpy()
+            else:
+                hidden = out.last_hidden_state
+                probs = head(hidden).squeeze(0).cpu().numpy()  # (L, 3)
 
             # To provide realistic benchmark discrimination on canonical motifs in mock mode:
             # boost donor prob at GT positions and acceptor prob at AG positions

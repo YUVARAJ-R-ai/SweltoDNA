@@ -122,26 +122,56 @@ def compute_top_k_accuracy(
     return float(captured_pos / n_pos)
 
 
-def safe_roc_auc(y_true_binary: np.ndarray, y_scores: np.ndarray) -> float:
-    """Safely calculates ROC-AUC, returning NaN if only one class exists."""
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def safe_roc_auc(y_true_binary: np.ndarray, y_scores: np.ndarray, default: float = float("nan")) -> float:
+    """
+    Safely calculates ROC-AUC, catching ValueError if only one class exists in y_true.
+    Logs a warning and returns default value (NaN).
+    """
     unique = np.unique(y_true_binary)
     if len(unique) < 2:
-        return float("nan")
+        logger.warning(
+            "Single-class sequence or batch encountered (classes=%s). ROC-AUC is undefined; defaulting to %s.",
+            unique,
+            default,
+        )
+        return default
     try:
         return float(roc_auc_score(y_true_binary, y_scores))
-    except Exception:
-        return float("nan")
+    except ValueError as e:
+        logger.warning("ValueError encountered during ROC-AUC calculation: %s. Defaulting to %s.", e, default)
+        return default
+    except Exception as e:
+        logger.warning("Unexpected error during ROC-AUC calculation: %s. Defaulting to %s.", e, default)
+        return default
 
 
-def safe_pr_auc(y_true_binary: np.ndarray, y_scores: np.ndarray) -> float:
-    """Safely calculates PR-AUC (Average Precision), returning NaN if no positives."""
+def safe_pr_auc(y_true_binary: np.ndarray, y_scores: np.ndarray, default: float = float("nan")) -> float:
+    """
+    Safely calculates PR-AUC (Average Precision), catching ValueError if 0 positives exist.
+    Logs a warning and returns default value (NaN).
+    """
     n_pos = int(np.sum(y_true_binary))
     if n_pos == 0 or n_pos == len(y_true_binary):
-        return float("nan")
+        logger.warning(
+            "Batch contains %d positive sites out of %d total loci. PR-AUC is undefined; defaulting to %s.",
+            n_pos,
+            len(y_true_binary),
+            default,
+        )
+        return default
     try:
         return float(average_precision_score(y_true_binary, y_scores))
-    except Exception:
-        return float("nan")
+    except ValueError as e:
+        logger.warning("ValueError encountered during PR-AUC calculation: %s. Defaulting to %s.", e, default)
+        return default
+    except Exception as e:
+        logger.warning("Unexpected error during PR-AUC calculation: %s. Defaulting to %s.", e, default)
+        return default
 
 
 def compute_threshold_metrics(
@@ -209,14 +239,34 @@ def compute_splice_metrics(
     acceptor_probs = y_p[:, LABEL_ACCEPTOR]
 
     # ROC-AUC
-    d_roc = safe_roc_auc(donor_true, donor_probs)
-    a_roc = safe_roc_auc(acceptor_true, acceptor_probs)
+    try:
+        d_roc = safe_roc_auc(donor_true, donor_probs)
+    except ValueError as e:
+        logger.warning("ValueError computing donor ROC-AUC: %s. Defaulting to NaN.", e)
+        d_roc = float("nan")
+
+    try:
+        a_roc = safe_roc_auc(acceptor_true, acceptor_probs)
+    except ValueError as e:
+        logger.warning("ValueError computing acceptor ROC-AUC: %s. Defaulting to NaN.", e)
+        a_roc = float("nan")
+
     valid_rocs = [r for r in [d_roc, a_roc] if not np.isnan(r)]
     mean_roc = float(np.mean(valid_rocs)) if valid_rocs else float("nan")
 
     # PR-AUC
-    d_pr = safe_pr_auc(donor_true, donor_probs)
-    a_pr = safe_pr_auc(acceptor_true, acceptor_probs)
+    try:
+        d_pr = safe_pr_auc(donor_true, donor_probs)
+    except ValueError as e:
+        logger.warning("ValueError computing donor PR-AUC: %s. Defaulting to NaN.", e)
+        d_pr = float("nan")
+
+    try:
+        a_pr = safe_pr_auc(acceptor_true, acceptor_probs)
+    except ValueError as e:
+        logger.warning("ValueError computing acceptor PR-AUC: %s. Defaulting to NaN.", e)
+        a_pr = float("nan")
+
     valid_prs = [r for r in [d_pr, a_pr] if not np.isnan(r)]
     mean_pr = float(np.mean(valid_prs)) if valid_prs else float("nan")
 

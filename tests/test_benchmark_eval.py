@@ -128,3 +128,58 @@ class TestSpliceMetrics:
                 content = f.read()
             assert "donor_roc_auc" in content
             assert "acceptor_pr_auc" in content
+
+    def test_compute_splice_metrics_all_neither_single_class_guard(self) -> None:
+        """Verifies compute_splice_metrics does not crash on batches with 0 splice sites."""
+        n_loci = 200
+        # All loci are Neither (0)
+        y_true_all_neither = np.zeros(n_loci, dtype=int)
+        y_probs = np.zeros((n_loci, 3))
+        y_probs[:, 0] = 0.98
+        y_probs[:, 1] = 0.01
+        y_probs[:, 2] = 0.01
+
+        # Must compute cleanly without ValueError
+        report = compute_splice_metrics(y_true_all_neither, y_probs)
+        assert report.n_total_loci == n_loci
+        assert report.n_donors == 0
+        assert report.n_acceptors == 0
+        assert np.isnan(report.donor_roc_auc)
+        assert np.isnan(report.acceptor_roc_auc)
+        assert np.isnan(report.donor_pr_auc)
+        assert np.isnan(report.acceptor_pr_auc)
+        assert np.isnan(report.mean_roc_auc)
+        assert np.isnan(report.mean_pr_auc)
+
+    def test_draft_heads_checkpoint_loading(self) -> None:
+        """Verifies checkpoint saving and loading in eval harness."""
+        import subprocess
+        import sys
+        import torch
+        import torch.nn as nn
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_path = Path(tmpdir) / "mock_draft_heads.pt"
+            dummy_head = nn.Sequential(
+                nn.Linear(256, 64),
+                nn.GELU(),
+                nn.Linear(64, 3),
+            )
+            torch.save(dummy_head.state_dict(), ckpt_path)
+            assert ckpt_path.exists()
+
+            # Run CLI with --draft-heads-checkpoint
+            cmd = [
+                sys.executable,
+                "scripts/eval_splice_benchmark.py",
+                "--draft-heads-checkpoint",
+                str(ckpt_path),
+                "--max-samples",
+                "3",
+                "--output-telemetry",
+                str(Path(tmpdir) / "telemetry_draft.json"),
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            assert res.returncode == 0
+            assert "Loading speculative draft heads from checkpoint" in res.stdout
+
