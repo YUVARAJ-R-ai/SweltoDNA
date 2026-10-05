@@ -261,7 +261,7 @@ class TestDeltaScoreCalculator:
         assert np.all(result["acceptor_loss"] == 0.0)
 
     def test_batched_tensor_inputs(self) -> None:
-        """Handles 3D batched inputs of shape (B, L, 3)."""
+        """Handles 3D batched inputs of shape (B, L, 3) with per-sample peak metrics."""
         B, L = 4, 300
         p_ref = torch.zeros(B, L, 3)
         p_mut = torch.zeros(B, L, 3)
@@ -273,4 +273,63 @@ class TestDeltaScoreCalculator:
 
         result = compute_delta_scores(p_ref, p_mut, window_size=30)
         assert result.donor_gain.shape == (B, L)
-        assert result.peak_delta >= 0.80
+        assert isinstance(result.peak_delta, list)
+        assert len(result.peak_delta) == B
+        assert len(result.peak_position) == B
+        assert len(result.peak_component) == B
+
+        # Verify exact per-sample peak metrics
+        assert abs(result.peak_delta[0] - 0.80) < 1e-4
+        assert result.peak_position[0] == 50
+        assert result.peak_component[0] == "donor_gain"
+
+        assert abs(result.peak_delta[1] - 0.90) < 1e-4
+        assert result.peak_position[1] == 100
+        assert result.peak_component[1] == "donor_loss"
+
+        assert abs(result.peak_delta[2] - 0.75) < 1e-4
+        assert result.peak_position[2] == 150
+        assert result.peak_component[2] == "acceptor_gain"
+
+        assert abs(result.peak_delta[3] - 0.85) < 1e-4
+        assert result.peak_position[3] == 200
+        assert result.peak_component[3] == "acceptor_loss"
+
+        # Verify batched locus-specific extraction
+        res_locus = compute_delta_scores(p_ref, p_mut, window_size=30, variant_pos=50)
+        assert isinstance(res_locus.peak_delta, list)
+        assert len(res_locus.peak_delta) == B
+        assert abs(res_locus.peak_delta[0] - 0.80) < 1e-4
+        assert res_locus.peak_position[0] == 50
+
+    def test_canonical_masking_with_negative_differences(self) -> None:
+        """When clamp_non_negative=False, canonical mask uses -inf fill so masked site is never picked as peak."""
+        L = 100
+        p_ref = np.zeros((L, 3), dtype=np.float32)
+        p_mut = np.zeros((L, 3), dtype=np.float32)
+
+        # In donor channel, difference is negative everywhere (-0.1)
+        p_ref[:, 1] = 0.5
+        p_mut[:, 1] = 0.4  # P_mut - P_ref = -0.1
+
+        # At canonical site index 20, difference is even more negative (-0.3)
+        p_mut[20, 1] = 0.2
+
+        # If masked with 0.0, index 20 would get 0.0 > -0.1 and erroneously become max!
+        # With -inf, index 20 gets -inf < -0.1, so max donor_gain remains -0.1
+        mask = np.zeros(L, dtype=bool)
+        mask[20] = True
+
+        result = compute_delta_scores(
+            p_ref,
+            p_mut,
+            window_size=30,
+            canonical_mask=mask,
+            clamp_non_negative=False,
+        )
+
+        # Peak donor gain should be -0.1 (from unmasked sites), NOT 0.0
+        max_dg = float(np.max(result.donor_gain))
+        assert abs(max_dg - (-0.1)) < 1e-4
+        assert np.isneginf(result.raw_differences["donor_gain"][20])
+

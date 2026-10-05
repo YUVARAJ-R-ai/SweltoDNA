@@ -7,7 +7,7 @@ acceptor disruption metrics across genomic sequences using 1D max pooling kernel
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Literal, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
@@ -37,23 +37,31 @@ class DeltaResult(dict):
         acceptor_gain: Union[np.ndarray, torch.Tensor],
         acceptor_loss: Union[np.ndarray, torch.Tensor],
         locus_delta: Union[np.ndarray, torch.Tensor],
-        peak_delta: float,
-        peak_component: DeltaComponent,
-        peak_position: int,
+        peak_delta: Union[float, List[float]],
+        peak_component: Union[DeltaComponent, List[DeltaComponent]],
+        peak_position: Union[int, List[int]],
         window_size: int,
         raw_differences: Optional[Dict[str, Union[np.ndarray, torch.Tensor]]] = None,
         latency_ms: Optional[float] = None,
         **kwargs: Any,
     ) -> None:
+        is_batched = isinstance(peak_delta, list)
+        peak_deltas = peak_delta if is_batched else [float(peak_delta)]
+        peak_positions = peak_position if is_batched else [int(peak_position)]
+        peak_components = peak_component if is_batched else [str(peak_component)]
+
         data: Dict[str, Any] = {
             "donor_gain": donor_gain,
             "donor_loss": donor_loss,
             "acceptor_gain": acceptor_gain,
             "acceptor_loss": acceptor_loss,
             "locus_delta": locus_delta,
-            "peak_delta": float(peak_delta),
-            "peak_component": str(peak_component),
-            "peak_position": int(peak_position),
+            "peak_delta": peak_delta,
+            "peak_deltas": peak_deltas,
+            "peak_component": peak_component,
+            "peak_components": peak_components,
+            "peak_position": peak_position,
+            "peak_positions": peak_positions,
             "window_size": int(window_size),
             "raw_differences": raw_differences or {},
             "latency_ms": latency_ms,
@@ -219,16 +227,17 @@ def compute_delta_scores(
         diff_stack[:, 3, :] = diff_al
 
     if canonical_mask is not None:
+        fill_val = 0.0 if clamp_non_negative else -float("inf")
         c_mask_t, _ = _to_tensor(canonical_mask, device=ref_t.device, dtype=torch.bool)
         if c_mask_t.dim() == 1:
             c_mask_t = c_mask_t.unsqueeze(0)
 
         if c_mask_t.shape[-1] == seq_len and c_mask_t.dim() == 2:
-            diff_stack[:, 0, :].masked_fill_(c_mask_t, 0.0)
-            diff_stack[:, 2, :].masked_fill_(c_mask_t, 0.0)
+            diff_stack[:, 0, :].masked_fill_(c_mask_t, fill_val)
+            diff_stack[:, 2, :].masked_fill_(c_mask_t, fill_val)
         elif c_mask_t.shape[-1] == 3 and c_mask_t.shape[1] == seq_len:
-            diff_stack[:, 0, :].masked_fill_(c_mask_t[:, :, 1], 0.0)
-            diff_stack[:, 2, :].masked_fill_(c_mask_t[:, :, 2], 0.0)
+            diff_stack[:, 0, :].masked_fill_(c_mask_t[:, :, 1], fill_val)
+            diff_stack[:, 2, :].masked_fill_(c_mask_t[:, :, 2], fill_val)
 
     raw_diffs: Dict[str, Union[np.ndarray, torch.Tensor]] = {}
     for idx, name in enumerate(_COMPONENT_NAMES):
@@ -253,16 +262,26 @@ def compute_delta_scores(
         start_idx = max(0, variant_pos - window_size)
         end_idx = min(seq_len, variant_pos + window_size + 1)
         slice_diff = diff_stack[:, :, start_idx:end_idx]
+        slice_len = end_idx - start_idx
 
         flat_slice = slice_diff.reshape(batch_size, -1)
-        max_val, argmax_flat = torch.max(flat_slice, dim=1)
-        argmax_idx = argmax_flat[0].item()
-        slice_len = end_idx - start_idx
-        peak_comp_idx = argmax_idx // slice_len
-        peak_pos_offset = argmax_idx % slice_len
-        peak_position = start_idx + peak_pos_offset
-        peak_component = _COMPONENT_NAMES[peak_comp_idx]
-        peak_delta = max_val[0].item()
+        max_vals, argmax_flats = torch.max(flat_slice, dim=1)
+        peak_comp_indices = argmax_flats // slice_len
+        peak_pos_offsets = argmax_flats % slice_len
+        peak_positions_tensor = start_idx + peak_pos_offsets
+
+        peak_deltas_list = [float(v.item()) for v in max_vals]
+        peak_positions_list = [int(p.item()) for p in peak_positions_tensor]
+        peak_components_list = [_COMPONENT_NAMES[int(c.item())] for c in peak_comp_indices]
+
+        if batch_size == 1:
+            peak_delta: Union[float, List[float]] = peak_deltas_list[0]
+            peak_position: Union[int, List[int]] = peak_positions_list[0]
+            peak_component: Union[DeltaComponent, List[DeltaComponent]] = peak_components_list[0]
+        else:
+            peak_delta = peak_deltas_list
+            peak_position = peak_positions_list
+            peak_component = peak_components_list
 
     else:
         dg_out = pooled[:, 0, :]
@@ -272,12 +291,22 @@ def compute_delta_scores(
         locus_delta = torch.max(pooled, dim=1).values
 
         flat_pooled = diff_stack.reshape(batch_size, -1)
-        max_val, argmax_flat = torch.max(flat_pooled, dim=1)
-        argmax_idx = argmax_flat[0].item()
-        peak_comp_idx = argmax_idx // seq_len
-        peak_position = argmax_idx % seq_len
-        peak_component = _COMPONENT_NAMES[peak_comp_idx]
-        peak_delta = max_val[0].item()
+        max_vals, argmax_flats = torch.max(flat_pooled, dim=1)
+        peak_comp_indices = argmax_flats // seq_len
+        peak_positions_tensor = argmax_flats % seq_len
+
+        peak_deltas_list = [float(v.item()) for v in max_vals]
+        peak_positions_list = [int(p.item()) for p in peak_positions_tensor]
+        peak_components_list = [_COMPONENT_NAMES[int(c.item())] for c in peak_comp_indices]
+
+        if batch_size == 1:
+            peak_delta = peak_deltas_list[0]
+            peak_position = peak_positions_list[0]
+            peak_component = peak_components_list[0]
+        else:
+            peak_delta = peak_deltas_list
+            peak_position = peak_positions_list
+            peak_component = peak_components_list
 
     if is_2d:
         dg_out = dg_out.squeeze(0)
