@@ -160,11 +160,8 @@ class TestSpliceMetrics:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             ckpt_path = Path(tmpdir) / "mock_draft_heads.pt"
-            dummy_head = nn.Sequential(
-                nn.Linear(256, 64),
-                nn.GELU(),
-                nn.Linear(64, 3),
-            )
+            from svelto_dna.speculative.draft_heads import SpeculativeDraftHeads
+            dummy_head = SpeculativeDraftHeads(hidden_dim=256, num_heads=3, num_classes=3)
             torch.save(dummy_head.state_dict(), ckpt_path)
             assert ckpt_path.exists()
 
