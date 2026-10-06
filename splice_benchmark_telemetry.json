@@ -1,0 +1,56 @@
+{
+  "n_total_loci": 9000,
+  "n_donors": 9,
+  "n_acceptors": 5,
+  "imbalance_ratio": 641.8571428571429,
+  "donor_roc_auc": 1.0,
+  "acceptor_roc_auc": 1.0,
+  "mean_roc_auc": 1.0,
+  "donor_pr_auc": 1.0,
+  "acceptor_pr_auc": 1.0,
+  "mean_pr_auc": 1.0,
+  "donor_top_1_acc": 1.0,
+  "donor_top_k_acc": 1.0,
+  "acceptor_top_1_acc": 1.0,
+  "acceptor_top_k_acc": 1.0,
+  "donor_threshold_metrics": {
+    "t_0.2": {
+      "threshold": 0.2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "t_0.5": {
+      "threshold": 0.5,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "t_0.8": {
+      "threshold": 0.8,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "acceptor_threshold_metrics": {
+    "t_0.2": {
+      "threshold": 0.2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "t_0.5": {
+      "threshold": 0.5,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "t_0.8": {
+      "threshold": 0.8,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  }
+}

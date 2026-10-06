@@ -79,73 +79,98 @@ A zero-lag horizontal viewport built with `@tanstack/react-virtual` that comfort
 
 ---
 
+## 📖 In-Depth Documentation
+
+For full mathematical derivations, component API references, biological polarity rules, and empirical benchmark matrices, see:
+👉 **[Comprehensive Architecture & Engine Reference (docs/ARCHITECTURE_AND_ENGINE.md)](docs/ARCHITECTURE_AND_ENGINE.md)**
+
+---
+
 ## 📂 Repository Structure
 
 ```
 sweltoDNA/
 ├── docs/
-│   └── research.md                   # Full research brief, tech stack & task breakdown
-├── scripts/
-│   ├── setup_github_project.py       # GitHub Project & Issues bootstrap script
-│   └── create_remaining_issues.py    # Automated issue provisioning & metadata sync
-├── engine/                           # [Sprint 1] Python / PyTorch speculative inference engine
-│   ├── backbone/                     # Frozen HyenaDNA / Nucleotide Transformer wrappers
-│   ├── draft_heads/                  # K=3/4 residual projection modules
-│   ├── tree_attention/               # Medusa DAG tree mask & verification logic
-│   ├── delta_scoring/                # Vectorized donor/acceptor disruption tensors
-│   └── server.py                     # FastAPI WebSocket streaming service
-├── web/                              # [Sprint 2] Next.js 14 web application
-│   ├── app/                          # Next.js App Router (layout, pages)
-│   ├── components/
-│   │   ├── SequenceRibbon.tsx        # Virtualized nucleotide horizontal viewer
-│   │   ├── RadialSwitcher.tsx        # Base mutation popover
-│   │   ├── MultiTrackVisualizer.tsx  # Dual-track HTML5 Canvas splice visualizer
-│   │   └── TelemetryHUD.tsx          # Real-time latency, α acceptance & FLOPs HUD
-│   └── hooks/
-│       └── useSpliceSocket.ts        # Persistent WebSocket client with reconnect
-├── benchmarks/                       # ClinVar & SpliceAI-10k evaluation suite
-│   ├── eval_clinvar.py               # Pathogenic/benign junction validation (ROC/PR-AUC)
-│   └── benchmark_latency.py          # Wall-clock speedup & VRAM profiler
-├── .zepher/                          # Zepher persistent context & session memory
-├── AGENTS.md                         # Autonomous agent rules & instructions
-└── README.md                         # Project documentation
+│   ├── ARCHITECTURE_AND_ENGINE.md   # Comprehensive mathematical, API & architecture documentation
+│   ├── research.md                  # Research brief, clinical landscape & task breakdown
+│   ├── task_01_implementation_plan.md
+│   └── task_02_implementation_plan.md
+├── svelto_dna/                      # Core Python / PyTorch package
+│   ├── core/                        # Invariant foundation backbone oracle & genomic tokenizer
+│   │   ├── backbone.py              # SveltoBackbone (frozen HyenaDNA/NT wrapper)
+│   │   └── tokenizer.py             # GenomicTokenizer (IUPAC, reverse-complement)
+│   ├── speculative/                 # Auxiliary speculative draft heads & training
+│   │   ├── draft_heads.py           # K=3/4 parallel residual projection heads & loss
+│   │   └── trainer.py               # DraftHeadTrainer with parameter isolation assertions
+│   ├── splice/                      # High-throughput splice disruption scoring
+│   │   └── delta.py                 # Vectorized 1D max-pooling delta calculator (<0.6 ms)
+│   ├── data/                        # Genomic data pipelines & clinical benchmarking
+│   │   ├── clinvar.py               # ClinVar SNV parser (pathogenic/benign/holdout VUS)
+│   │   ├── spliceai.py              # SpliceAI-10k parser & StrandCoordinateResolver
+│   │   ├── leakage.py               # Chromosome-level zero-leakage split verifier
+│   │   └── benchmark.py             # Diagnostic metric evaluator (ROC-AUC, PR-AUC)
+│   └── profiler/                    # Latency & memory benchmarking harness
+│       └── benchmark.py             # Baseline inference profiler & telemetry exporter
+├── benchmarks/                      # Standalone performance evaluation scripts
+│   └── benchmark_delta.py           # Vectorized delta throughput & latency benchmark
+├── scripts/                         # Operational & data extraction utilities
+│   ├── extract_splice_data.py       # Ingest & partition SpliceAI & ClinVar into Parquet
+│   └── eval_splice_benchmark.py     # Benchmark evaluation CLI on test splits
+├── tests/                           # Complete automated pytest suite (85+ tests)
+│   ├── test_backbone.py             # Foundation oracle parameter freezing & determinism
+│   ├── test_tokenizer.py            # Coordinate inversion & IUPAC tokens
+│   ├── test_draft_heads.py          # Tensor shapes, parameter overhead & discount decay
+│   ├── test_delta.py                # 1D max pooling delta scoring & batched peak extraction
+│   ├── test_data_pipeline.py        # ClinVar filtering & negative-strand biological polarity
+│   └── test_benchmark_eval.py       # Diagnostic metrics & class imbalance guards
+├── train_draft_heads.py             # Standalone draft heads training & verification CLI
+├── benchmark_baseline.py            # Baseline backbone profiler CLI
+├── .zepher/                         # Zepher persistent context & session memory
+├── AGENTS.md                        # Autonomous agent rules & instructions
+└── README.md                        # Project landing documentation
 ```
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quickstart & Verification Commands
 
-### Prerequisites
-- Python 3.10+ with CUDA 12.1+ / ROCm support (or NixOS environment with `nix-shell`)
-- Node.js 18+ & pnpm / npm
-- NVIDIA GPU with $\ge 8$ GB VRAM recommended (RTX 3060/3090/4090, T4, A10G)
-
-### Backend Inference Engine Setup
+### 1. Environment Setup
 ```bash
 # Clone the repository
 git clone https://github.com/YUVARAJ-R-ai/SweltoDNA.git
 cd SweltoDNA
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install fastapi uvicorn websockets polars pyfaidx scikit-learn transformers
+# Install with development dependencies
+uv sync --extra dev  # or: python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 ```
 
-### Launching the Backend Server
+### 2. Run Test Suite (85+ Tests)
 ```bash
-uvicorn engine.server:app --host 0.0.0.0 --port 8000 --reload
+.venv/bin/pytest tests/
 ```
 
-### Frontend Web UI Setup
+### 3. Verify Speculative Draft Heads ($K=3/4$)
 ```bash
-cd web
-npm install
-npm run dev
-# Open http://localhost:3000 in your browser
+# Verify K=3 heads (overhead: 2.87% < 4.0%, backbone frozen)
+.venv/bin/python train_draft_heads.py --num-heads 3
+
+# Verify K=4 heads (overhead: 3.83% < 4.0%, backbone frozen)
+.venv/bin/python train_draft_heads.py --num-heads 4
+```
+
+### 4. Benchmark Vectorized Delta Scoring ($10,000$ bp in $0.55\text{ ms}$)
+```bash
+uv run python benchmarks/benchmark_delta.py --repeats 50
+```
+
+### 5. Extract ClinVar & SpliceAI Datasets (Zero Data Leakage)
+```bash
+.venv/bin/python scripts/extract_splice_data.py --output-dir data/processed --window-size 1000
+```
+
+### 6. Run Clinical Diagnostic Benchmark (ROC-AUC / PR-AUC)
+```bash
+.venv/bin/python scripts/eval_splice_benchmark.py --test-parquet data/processed/spliceai_test.parquet
 ```
 
 ---
