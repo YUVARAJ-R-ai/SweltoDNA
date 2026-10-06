@@ -23,10 +23,13 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+uv.lock
 
 # Virtual environments
 venv/
+venv
 .venv/
+.venv
 ENV/
 env/
 
