@@ -11,6 +11,7 @@ from svelto_dna.speculative.draft_heads import (
     SpeculativeDraftHeads,
     SpeculativeDraftLoss,
 )
+from svelto_dna.splice.delta import compute_delta_scores, DeltaResult
 
 __all__ = [
     "GenomicTokenizer",
@@ -19,4 +20,7 @@ __all__ = [
     "DraftHead",
     "SpeculativeDraftHeads",
     "SpeculativeDraftLoss",
+    "compute_delta_scores",
+    "DeltaResult",
 ]
+
