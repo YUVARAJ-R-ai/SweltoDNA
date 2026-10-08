@@ -15,7 +15,24 @@
 
 Variant effect predictors and deep genomic foundation models (such as **SpliceAI**, **Nucleotide Transformer**, and **HyenaDNA**) have significantly advanced the clinical interpretation of non-coding mutations. However, standard architectures rely on sequential autoregressive decoding or heavy, un-accelerated convolutional forward passes across large sequence windows ($1,000$ to $10,000$ bp). Consequently, evaluating in silico saturation mutagenesis (ISM) or exploring novel candidate variants has remained confined to multi-hour offline batch processing pipelines.
 
-**Svelto-DNA** transforms clinical splice-site disruption analysis from slow batch jobs into an **interactive, sub-second web diagnostic workflow**. By introducing **Medusa-style speculative draft verification heads** and **directed acyclic graph (DAG) tree attention masking** directly onto frozen genomic foundation backbones, Svelto-DNA evaluates multiple candidate mutation states simultaneously in a **single forward pass**, achieving a **$2.0\times$ to $3.5\times$ wall-clock speedup** without compromising ground-truth diagnostic fidelity.
+**Svelto-DNA** transforms clinical splice-site disruption analysis from slow batch jobs into an **interactive, sub-second web diagnostic workflow**. By introducing **Medusa-style speculative draft verification heads** and **directed acyclic graph (DAG) tree attention masking** directly onto frozen genomic foundation backbones, Svelto-DNA evaluates multiple candidate mutation states simultaneously in a **single forward pass**, targeting a **$2.0\times$ to $3.5\times$ wall-clock speedup** without compromising diagnostic fidelity. *This speedup is a design target and has not been measured yet; see Current Status below.*
+
+---
+
+## 🚦 Current Status (2026-10-08)
+
+What runs today, and what is still scaffolding:
+
+| Area | Status |
+| :--- | :--- |
+| Backbone | Only the built-in `MockGenomicBackbone` has been run. Real HyenaDNA / Nucleotide Transformer checkpoints need their own tokenizers (vocab mismatch with `GenomicTokenizer`). |
+| SpliceAI data | Synthetic only. No loader for the real SpliceAI-10k files exists yet. |
+| ClinVar data | Parser works, but the ±50 bp junction filter needs exon annotations (GTF); real ClinVar files carry no junction distance, so every SNV currently passes. |
+| Splice benchmark | Harness is honest as of `ebbcca0`. The untrained mock head scores at chance (donor ROC-AUC 0.35); no trained model has been benchmarked. |
+| Draft heads (K=3/4) | Implemented and tested on random targets; not yet trained on splice labels. |
+| Delta calculator | Implemented; 0.55 ms for 10 kb on CPU (`delta_benchmark_telemetry.json`). |
+| DAG tree verification, speedup | Not started (#4). The 2.0–3.5× figure is a target. |
+| WebSocket API, frontend | Not started (#6–#9). |
 
 ---
 
@@ -116,7 +133,7 @@ sweltoDNA/
 ├── scripts/                         # Operational & data extraction utilities
 │   ├── extract_splice_data.py       # Ingest & partition SpliceAI & ClinVar into Parquet
 │   └── eval_splice_benchmark.py     # Benchmark evaluation CLI on test splits
-├── tests/                           # Complete automated pytest suite (85+ tests)
+├── tests/                           # Automated pytest suite (78 tests)
 │   ├── test_backbone.py             # Foundation oracle parameter freezing & determinism
 │   ├── test_tokenizer.py            # Coordinate inversion & IUPAC tokens
 │   ├── test_draft_heads.py          # Tensor shapes, parameter overhead & discount decay
@@ -144,7 +161,7 @@ cd SweltoDNA
 uv sync --extra dev  # or: python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 ```
 
-### 2. Run Test Suite (85+ Tests)
+### 2. Run Test Suite (78 Tests)
 ```bash
 .venv/bin/pytest tests/
 ```
