@@ -46,7 +46,8 @@ class MockGenomicBackbone(nn.Module):
         self.num_layers = num_layers
         self.max_seq_len = max_seq_len
 
-        # Deterministic seed for weight initialization
+        # Deterministic seed for weight initialization; caller's global RNG is restored below
+        caller_rng_state = torch.get_rng_state()
         torch.manual_seed(42)
 
         self.embedding = nn.Embedding(vocab_size, hidden_dim, padding_idx=0)
@@ -75,6 +76,7 @@ class MockGenomicBackbone(nn.Module):
 
         self.final_norm = nn.LayerNorm(hidden_dim)
         self.head = nn.Linear(hidden_dim, vocab_size)
+        torch.set_rng_state(caller_rng_state)
 
     def forward(
         self,
