@@ -10,6 +10,7 @@
 - **Baseline Profiler (`svelto_dna.profiler.benchmark`):**
   - Measures wall-clock latency (mean, median, p95, min, max), peak memory (CUDA VRAM or CPU RSS), and throughput across $L \in \{1024, 2048, 5000, 10000\}$ bp.
   - Outputs standardized JSON telemetry consumed by the benchmarking HUD.
+<<<<<<< HEAD
 - **ClinVar Splice Extraction (`svelto_dna.data.clinvar`):**
   - Parses ClinVar GRCh38 variant dumps (VCF/TSV), filters SNVs within +-50 bp of canonical GT/AG junctions.
   - Partitions pathogenic vs benign variants, and routes VUS / conflicting interpretations into holdout evaluation sets.
@@ -30,4 +31,6 @@
   - `compute_delta_scores`: Vectorized 1D max pooling (`torch.nn.functional.max_pool1d`) across genomic windows ($W = \pm 50$ bp).
   - Sub-millisecond latency: computes delta scores for $L=10,000$ bp in $0.55\text{ ms}$ on CPU with throughput $> 1.8 \times 10^7$ bp/s.
   - `DeltaResult`: Structured container supporting donor/acceptor gain and loss tensors, per-sample batched extraction ($B > 1$), and NumPy/PyTorch conversions.
+- **Delta Scoring Benchmark Runner (`benchmarks/benchmark_delta.py`):**
+  - Profiles full-sequence and point-locus execution times and nucleotide throughput across $L \in \{1024, 2048, 5000, 10000\}$, producing `delta_benchmark_telemetry.json`.
 

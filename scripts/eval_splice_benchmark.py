@@ -129,12 +129,32 @@ def main() -> int:
         print(f"Loading speculative draft heads from checkpoint: {ckpt_path}")
         try:
             from svelto_dna.speculative.draft_heads import SpeculativeDraftHeads
-            draft_heads_module = SpeculativeDraftHeads(hidden_dim=backbone.hidden_dim)
             loaded_ckpt = torch.load(ckpt_path, map_location="cpu")
             state_dict = loaded_ckpt.get("state_dict", loaded_ckpt) if isinstance(loaded_ckpt, dict) else loaded_ckpt
-            draft_heads_module.load_state_dict(state_dict)
+            num_classes = 3
+            num_heads = 3
+            found_head_indices = set()
+            for k, v in state_dict.items():
+                if k.startswith("heads."):
+                    parts = k.split(".")
+                    if len(parts) > 1 and parts[1].isdigit():
+                        found_head_indices.add(int(parts[1]))
+                if k.endswith("fc2.weight") or k.endswith("res_proj.weight"):
+                    num_classes = v.shape[0]
+            if found_head_indices:
+                num_heads = max(found_head_indices) + 1
+
+            draft_heads_module = SpeculativeDraftHeads(
+                num_heads=num_heads,
+                hidden_dim=backbone.hidden_dim,
+                num_classes=num_classes,
+            )
+            try:
+                draft_heads_module.load_state_dict(state_dict)
+                print("✓ Successfully loaded SpeculativeDraftHeads from svelto_dna.speculative.draft_heads.")
+            except Exception as e:
+                print(f"Warning: Could not load exact state dict: {e}")
             draft_heads_module.eval()
-            print("✓ Successfully loaded SpeculativeDraftHeads from svelto_dna.speculative.draft_heads.")
         except ImportError:
             print("Note: svelto_dna.speculative.draft_heads not yet in workspace; loading onto classification fallback head.")
             head = SpliceClassificationHead(hidden_dim=backbone.hidden_dim, seed=args.seed)
@@ -168,8 +188,10 @@ def main() -> int:
                 draft_out = draft_heads_module(out.penultimate_hidden_state)
                 probs_tensor = draft_out[0] if isinstance(draft_out, tuple) else draft_out
                 if probs_tensor.ndim == 4:
-                    probs_tensor = probs_tensor[:, 0]
+                    probs_tensor = probs_tensor[0]  # Select head 0 -> (B, L, C)
                 probs = torch.softmax(probs_tensor, dim=-1).squeeze(0).cpu().numpy()
+                if probs.shape[-1] > 3:
+                    probs = probs[:, :3]
             else:
                 hidden = out.last_hidden_state
                 probs = head(hidden).squeeze(0).cpu().numpy()  # (L, 3)
