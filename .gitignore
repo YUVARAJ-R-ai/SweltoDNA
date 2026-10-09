@@ -77,3 +77,6 @@ Thumbs.db
 
 # Zepher local machine state
 .zepher/local/
+
+# Brainstorming visual companion sessions
+.superpowers/
