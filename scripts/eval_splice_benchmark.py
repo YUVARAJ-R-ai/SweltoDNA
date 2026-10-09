@@ -176,6 +176,9 @@ def main() -> int:
                 hidden = out.last_hidden_state
                 probs = head(hidden).squeeze(0).cpu().numpy()  # (L, 3)
 
+            # Real windows carry `context` bp of unlabelled flank on each side; score only the labelled block.
+            ctx = int(row.get("context") or 0)
+            probs = probs[ctx: ctx + len(labels)]
             all_y_true.extend(labels)
             all_y_probs.append(probs)
 
