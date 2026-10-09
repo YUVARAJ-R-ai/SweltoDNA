@@ -61,3 +61,23 @@ class TestSveltoBackbone:
         )
         assert backbone.is_mock is True
         assert backbone.trainable_parameters_count == 0
+
+
+def test_mock_construction_preserves_global_rng():
+    torch.manual_seed(123)
+    expected = torch.rand(1)
+
+    torch.manual_seed(123)
+    SveltoBackbone(model_name="mock", hidden_dim=32, num_layers=1)
+    actual = torch.rand(1)
+
+    assert torch.equal(expected, actual)
+
+
+def test_mock_weights_identical_across_instances():
+    a = SveltoBackbone(model_name="mock", hidden_dim=32, num_layers=1)
+    torch.rand(10)  # disturb global RNG between constructions
+    b = SveltoBackbone(model_name="mock", hidden_dim=32, num_layers=1)
+
+    for (name, pa), (_, pb) in zip(a.named_parameters(), b.named_parameters()):
+        assert torch.equal(pa, pb), f"{name} differs between instances"

@@ -20,14 +20,8 @@ import torch.nn as nn
 from svelto_dna.core.backbone import SveltoBackbone
 from svelto_dna.core.tokenizer import GenomicTokenizer
 from svelto_dna.data.benchmark import SpliceMetricsReport, compute_splice_metrics
-from svelto_dna.data.spliceai import (
-    LABEL_ACCEPTOR,
-    LABEL_DONOR,
-    LABEL_NEITHER,
-    SpliceAIDatasetConfig,
-    SpliceAIParser,
-    generate_synthetic_spliceai_dataset,
-)
+from svelto_dna.data.spliceai import generate_synthetic_spliceai_dataset
+from svelto_dna.speculative.draft_heads import SpeculativeDraftHeads
 
 
 class SpliceClassificationHead(nn.Module):
@@ -127,44 +121,30 @@ def main() -> int:
         if not ckpt_path.exists():
             raise FileNotFoundError(f"Draft heads checkpoint not found at: {ckpt_path}")
         print(f"Loading speculative draft heads from checkpoint: {ckpt_path}")
-        try:
-            from svelto_dna.speculative.draft_heads import SpeculativeDraftHeads
-            loaded_ckpt = torch.load(ckpt_path, map_location="cpu")
-            state_dict = loaded_ckpt.get("state_dict", loaded_ckpt) if isinstance(loaded_ckpt, dict) else loaded_ckpt
-            num_classes = 3
-            num_heads = 3
-            found_head_indices = set()
-            for k, v in state_dict.items():
-                if k.startswith("heads."):
-                    parts = k.split(".")
-                    if len(parts) > 1 and parts[1].isdigit():
-                        found_head_indices.add(int(parts[1]))
-                if k.endswith("fc2.weight") or k.endswith("res_proj.weight"):
-                    num_classes = v.shape[0]
-            if found_head_indices:
-                num_heads = max(found_head_indices) + 1
+        loaded_ckpt = torch.load(ckpt_path, map_location="cpu")
+        state_dict = loaded_ckpt.get("state_dict", loaded_ckpt) if isinstance(loaded_ckpt, dict) else loaded_ckpt
+        num_classes = 3
+        num_heads = 3
+        found_head_indices = set()
+        for k, v in state_dict.items():
+            if k.startswith("heads."):
+                parts = k.split(".")
+                if len(parts) > 1 and parts[1].isdigit():
+                    found_head_indices.add(int(parts[1]))
+            if k.endswith("fc2.weight") or k.endswith("res_proj.weight"):
+                num_classes = v.shape[0]
+        if found_head_indices:
+            num_heads = max(found_head_indices) + 1
 
-            draft_heads_module = SpeculativeDraftHeads(
-                num_heads=num_heads,
-                hidden_dim=backbone.hidden_dim,
-                num_classes=num_classes,
-            )
-            try:
-                draft_heads_module.load_state_dict(state_dict)
-                print("✓ Successfully loaded SpeculativeDraftHeads from svelto_dna.speculative.draft_heads.")
-            except Exception as e:
-                print(f"Warning: Could not load exact state dict: {e}")
-            draft_heads_module.eval()
-        except ImportError:
-            print("Note: svelto_dna.speculative.draft_heads not yet in workspace; loading onto classification fallback head.")
-            head = SpliceClassificationHead(hidden_dim=backbone.hidden_dim, seed=args.seed)
-            loaded_ckpt = torch.load(ckpt_path, map_location="cpu")
-            state_dict = loaded_ckpt.get("state_dict", loaded_ckpt) if isinstance(loaded_ckpt, dict) else loaded_ckpt
-            try:
-                head.load_state_dict(state_dict)
-            except Exception as e:
-                print(f"Warning: Could not load exact state dict: {e}")
-            head.eval()
+        draft_heads_module = SpeculativeDraftHeads(
+            num_heads=num_heads,
+            hidden_dim=backbone.hidden_dim,
+            num_classes=num_classes,
+        )
+        # strict load: a mismatched checkpoint must fail, not silently evaluate random weights
+        draft_heads_module.load_state_dict(state_dict)
+        draft_heads_module.eval()
+        print("✓ Successfully loaded SpeculativeDraftHeads from svelto_dna.speculative.draft_heads.")
     else:
         head = SpliceClassificationHead(hidden_dim=backbone.hidden_dim, seed=args.seed)
         head.eval()
@@ -196,27 +176,8 @@ def main() -> int:
                 hidden = out.last_hidden_state
                 probs = head(hidden).squeeze(0).cpu().numpy()  # (L, 3)
 
-            # To provide realistic benchmark discrimination on canonical motifs in mock mode:
-            # boost donor prob at GT positions and acceptor prob at AG positions
-            seq_str = seq.upper()
-            adjusted_probs = probs.copy()
-            for idx, label in enumerate(labels):
-                if label == LABEL_DONOR:
-                    adjusted_probs[idx, LABEL_DONOR] = max(adjusted_probs[idx, LABEL_DONOR], 0.85)
-                    adjusted_probs[idx, LABEL_NEITHER] = 0.10
-                    adjusted_probs[idx, LABEL_ACCEPTOR] = 0.05
-                elif label == LABEL_ACCEPTOR:
-                    adjusted_probs[idx, LABEL_ACCEPTOR] = max(adjusted_probs[idx, LABEL_ACCEPTOR], 0.85)
-                    adjusted_probs[idx, LABEL_NEITHER] = 0.10
-                    adjusted_probs[idx, LABEL_DONOR] = 0.05
-                else:
-                    # Non-splice background
-                    adjusted_probs[idx, LABEL_NEITHER] = max(adjusted_probs[idx, LABEL_NEITHER], 0.95)
-                    adjusted_probs[idx, LABEL_DONOR] = min(adjusted_probs[idx, LABEL_DONOR], 0.03)
-                    adjusted_probs[idx, LABEL_ACCEPTOR] = min(adjusted_probs[idx, LABEL_ACCEPTOR], 0.02)
-
             all_y_true.extend(labels)
-            all_y_probs.append(adjusted_probs)
+            all_y_probs.append(probs)
 
     y_true = np.array(all_y_true, dtype=int)
     y_probs = np.vstack(all_y_probs)

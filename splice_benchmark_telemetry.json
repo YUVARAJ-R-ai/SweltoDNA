@@ -1,56 +1,56 @@
 {
-  "n_total_loci": 9000,
-  "n_donors": 9,
-  "n_acceptors": 5,
-  "imbalance_ratio": 641.8571428571429,
-  "donor_roc_auc": 1.0,
-  "acceptor_roc_auc": 1.0,
-  "mean_roc_auc": 1.0,
-  "donor_pr_auc": 1.0,
-  "acceptor_pr_auc": 1.0,
-  "mean_pr_auc": 1.0,
-  "donor_top_1_acc": 1.0,
-  "donor_top_k_acc": 1.0,
-  "acceptor_top_1_acc": 1.0,
-  "acceptor_top_k_acc": 1.0,
+  "n_total_loci": 25000,
+  "n_donors": 25,
+  "n_acceptors": 13,
+  "imbalance_ratio": 656.8947368421053,
+  "donor_roc_auc": 0.34748988988988994,
+  "acceptor_roc_auc": 0.7634308301855426,
+  "mean_roc_auc": 0.5554603600377163,
+  "donor_pr_auc": 0.0007275967316307173,
+  "acceptor_pr_auc": 0.001233104296473188,
+  "mean_pr_auc": 0.0009803505140519528,
+  "donor_top_1_acc": 0.0,
+  "donor_top_k_acc": 0.0,
+  "acceptor_top_1_acc": 0.0,
+  "acceptor_top_k_acc": 0.0,
   "donor_threshold_metrics": {
     "t_0.2": {
       "threshold": 0.2,
-      "precision": 1.0,
+      "precision": 0.001,
       "recall": 1.0,
-      "f1": 1.0
+      "f1": 0.001998001998001998
     },
     "t_0.5": {
       "threshold": 0.5,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     },
     "t_0.8": {
       "threshold": 0.8,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     }
   },
   "acceptor_threshold_metrics": {
     "t_0.2": {
       "threshold": 0.2,
-      "precision": 1.0,
+      "precision": 0.0005647508579868804,
       "recall": 1.0,
-      "f1": 1.0
+      "f1": 0.0011288641889544981
     },
     "t_0.5": {
       "threshold": 0.5,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     },
     "t_0.8": {
       "threshold": 0.8,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
     }
   }
 }
