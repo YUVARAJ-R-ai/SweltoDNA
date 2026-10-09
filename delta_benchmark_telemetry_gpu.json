@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "device": "cuda",
+    "device_name": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "dtype": "float32",
+    "window_size": 50,
+    "warmup_runs": 10,
+    "repeat_runs": 200,
+    "platform": "Linux-7.2.5-3-omarchy-x86_64-with-glibc2.44",
+    "python_version": "3.11.16",
+    "torch_version": "2.14.1+cu130"
+  },
+  "profiles": {
+    "1024": {
+      "sequence_length": 1024,
+      "full_profile": {
+        "mean_ms": 0.21640091491462954,
+        "std_ms": 0.025564252864549723,
+        "median_ms": 0.2115675006280071,
+        "p95_ms": 0.24262549904960906,
+        "min_ms": 0.20002499877591617,
+        "max_ms": 0.5304449987306725
+      },
+      "point_locus": {
+        "mean_ms": 0.321709725085384,
+        "std_ms": 1.0573103093864231,
+        "median_ms": 0.23267699998541502,
+        "p95_ms": 0.2868025009775007,
+        "min_ms": 0.2194620010413928,
+        "max_ms": 15.212095999231678
+      },
+      "nucleotide_throughput_bp_per_sec": 4731957.812673617
+    },
+    "10000": {
+      "sequence_length": 10000,
+      "full_profile": {
+        "mean_ms": 0.2119735650376242,
+        "std_ms": 0.004739917600719136,
+        "median_ms": 0.21037999886175385,
+        "p95_ms": 0.21938910049357216,
+        "min_ms": 0.20669800142059103,
+        "max_ms": 0.24295600087498315
+      },
+      "point_locus": {
+        "mean_ms": 0.2356320850776683,
+        "std_ms": 0.00766891984506951,
+        "median_ms": 0.23347800015471876,
+        "p95_ms": 0.24357004949706607,
+        "min_ms": 0.2299309999216348,
+        "max_ms": 0.321834000715171
+      },
+      "nucleotide_throughput_bp_per_sec": 47175693.80986281
+    }
+  }
+}
