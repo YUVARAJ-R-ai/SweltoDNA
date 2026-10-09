@@ -299,3 +299,24 @@ class TestDraftHeadTrainer:
         # Step 2
         metrics_2 = trainer.train_step(dummy_input, dummy_target)
         assert metrics_2["loss"] < loss_1 or metrics_2["total_grad_norm"] > 0
+
+
+class TestSpliceLabelZeroIsLearned:
+    """Class 0 is 'Neither' in splice labels, so default losses must not ignore it."""
+
+    def test_default_loss_counts_neither_targets(self):
+        K, B, L, C = 3, 1, 16, 3
+        draft_logits = torch.zeros(K, B, L, C)
+        draft_logits[..., 1] = 10.0  # confidently predicts 'Donor' everywhere
+        target_ids = torch.zeros(B, L, dtype=torch.long)  # truth: 'Neither' everywhere
+
+        total_loss, _ = SpeculativeDraftLoss()(draft_logits, target_ids)
+
+        assert float(total_loss) > 1.0
+
+    def test_trainer_default_loss_does_not_ignore_neither(self):
+        backbone = SveltoBackbone(model_name="mock", hidden_dim=64, num_layers=1)
+        heads = SpeculativeDraftHeads(hidden_dim=64, num_heads=3, num_classes=3)
+        trainer = DraftHeadTrainer(backbone=backbone, draft_heads=heads)
+
+        assert trainer.loss_fn.ignore_index != 0
