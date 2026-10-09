@@ -25,7 +25,7 @@ What runs today, and what is still scaffolding:
 
 | Area | Status |
 | :--- | :--- |
-| Backbone | Only the built-in `MockGenomicBackbone` has been run. Real HyenaDNA / Nucleotide Transformer checkpoints need their own tokenizers (vocab mismatch with `GenomicTokenizer`). |
+| Backbone | Real HyenaDNA (`LongSafari/hyenadna-small-32k-seqlen-hf`) loads frozen with its own tokenizer; fp32 weights, fp16 autocast on CUDA. Profiled on an RTX 5060 Laptop: 10 kb in 15.8 ms, 262 MB peak VRAM (`baseline_telemetry.json`). The mock backbone remains for offline tests. |
 | SpliceAI data | Synthetic only. No loader for the real SpliceAI-10k files exists yet. |
 | ClinVar data | Parser works, but the ±50 bp junction filter needs exon annotations (GTF); real ClinVar files carry no junction distance, so every SNV currently passes. |
 | Splice benchmark | Harness is honest as of `ebbcca0`. The untrained mock head scores at chance (donor ROC-AUC 0.35); no trained model has been benchmarked. |

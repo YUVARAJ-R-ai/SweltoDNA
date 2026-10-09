@@ -5,11 +5,14 @@ freezing, deterministic inference, and architecture-faithful mock fallback.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+import inspect
 import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from svelto_dna.core.tokenizer import GenomicTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +135,7 @@ class SveltoBackbone(nn.Module):
         hidden_dim: int = 256,
         num_layers: int = 4,
         max_seq_len: int = 10000,
-        fallback_to_mock: bool = True,
+        fallback_to_mock: bool = False,
     ) -> None:
         super().__init__()
         self.model_name = model_name
@@ -153,8 +156,12 @@ class SveltoBackbone(nn.Module):
         else:
             self.target_dtype = dtype
 
-        # Initialize underlying backbone model
+        # Initialize underlying backbone model. Every backbone carries its own tokenizer:
+        # real checkpoints use their published vocabulary (HyenaDNA: A=7 ... N=11), not GenomicTokenizer's.
         self.is_mock = False
+        self.normalizer = GenomicTokenizer()
+        self.hf_tokenizer = None
+        self._forward_params: frozenset = frozenset()
         if model_name.lower() in ("mock", "local", "synthetic"):
             self.model = MockGenomicBackbone(
                 vocab_size=6,
@@ -165,15 +172,17 @@ class SveltoBackbone(nn.Module):
             self.is_mock = True
         else:
             try:
-                from transformers import AutoModel, AutoConfig
+                from transformers import AutoConfig, AutoModel, AutoTokenizer
                 logger.info(f"Loading foundation model from Hugging Face: {model_name}")
                 config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-                self.model = AutoModel.from_pretrained(
-                    model_name,
-                    config=config,
-                    trust_remote_code=True,
-                    torch_dtype=self.target_dtype,
-                )
+                # Weights stay fp32; reduced precision comes from autocast in forward(), which keeps
+                # HyenaDNA's FFT long convolutions accurate (fp16 autocast: cosine 0.99998 vs fp32).
+                self.model = AutoModel.from_pretrained(model_name, config=config, trust_remote_code=True, dtype=torch.float32)
+                self.hf_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                self.hidden_dim = int(getattr(config, "d_model", None) or getattr(config, "hidden_size"))
+                self.num_layers = int(getattr(config, "n_layer", None) or getattr(config, "num_hidden_layers", num_layers))
+                self.max_seq_len = int(getattr(config, "max_seq_len", None) or getattr(config, "max_position_embeddings", max_seq_len))
+                self._forward_params = frozenset(inspect.signature(self.model.forward).parameters)
             except Exception as e:
                 if self.fallback_to_mock:
                     logger.warning(
@@ -206,6 +215,25 @@ class SveltoBackbone(nn.Module):
         # Strict invariant assertion
         trainable = self.trainable_parameters_count
         assert trainable == 0, f"Invariant violation: Backbone has {trainable} trainable parameters!"
+
+    def encode(self, sequences: Union[str, Sequence[str]]) -> Dict[str, torch.Tensor]:
+        """
+        Tokenizes DNA with this backbone's own vocabulary: one token per base, no special tokens,
+        right-padded, with an attention mask. Lowercase and IUPAC codes are normalized first.
+        """
+        seqs = [sequences] if isinstance(sequences, str) else list(sequences)
+        if self.hf_tokenizer is None:
+            return self.normalizer.encode(seqs, padding=True, return_tensors="pt")  # type: ignore[return-value]
+        tok = self.hf_tokenizer
+        rows = [tok.convert_tokens_to_ids(list(self.normalizer.normalize(s))) for s in seqs]
+        width = max((len(r) for r in rows), default=0)
+        pad = tok.pad_token_id
+        ids = torch.full((len(rows), width), pad, dtype=torch.long)
+        mask = torch.zeros((len(rows), width), dtype=torch.long)
+        for i, r in enumerate(rows):
+            ids[i, : len(r)] = torch.tensor(r, dtype=torch.long)
+            mask[i, : len(r)] = 1
+        return {"input_ids": ids, "attention_mask": mask}
 
     @property
     def trainable_parameters_count(self) -> int:
@@ -268,18 +296,23 @@ class SveltoBackbone(nn.Module):
                 },
             )
         else:
-            # Hugging Face Transformer or HyenaDNA forward pass
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                output_hidden_states=True,
-                return_dict=True,
-            )
+            # Pass only what this model's forward() accepts: HyenaDNA has no attention_mask
+            # (it is causal, so right padding cannot affect real positions).
+            kwargs: Dict[str, Any] = {"input_ids": input_ids, "output_hidden_states": True}
+            if "attention_mask" in self._forward_params and attention_mask is not None:
+                kwargs["attention_mask"] = attention_mask
+            if "return_dict" in self._forward_params:
+                kwargs["return_dict"] = True
+            outputs = self.model(**kwargs)
             last_hidden = outputs.last_hidden_state
             if hasattr(outputs, "hidden_states") and outputs.hidden_states and len(outputs.hidden_states) >= 2:
                 penultimate_hidden = outputs.hidden_states[-2]
             else:
                 penultimate_hidden = last_hidden
+            if attention_mask is not None:
+                mask = attention_mask.unsqueeze(-1).to(last_hidden.dtype)
+                last_hidden = last_hidden * mask
+                penultimate_hidden = penultimate_hidden * mask
 
             logits = getattr(outputs, "logits", None)
             return BackboneOutput(

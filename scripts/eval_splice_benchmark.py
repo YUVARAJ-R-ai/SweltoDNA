@@ -157,7 +157,7 @@ def main() -> int:
             seq = row["window_sequence"]
             labels = row["labels"]  # List of int
 
-            encoding = tokenizer.encode(seq, return_tensors="pt")
+            encoding = backbone.encode(seq)
             input_ids = encoding["input_ids"]
             attn_mask = encoding["attention_mask"]
 
