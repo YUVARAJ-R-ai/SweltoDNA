@@ -38,7 +38,7 @@ def main() -> int:
     ap.add_argument("--width", type=int, default=64)
     ap.add_argument("--k", default="24,48,96", help="Verification budgets to evaluate")
     ap.add_argument("--threshold", type=float, default=0.2, help="|Δ| defining a high-impact variant (SpliceAI's usual 0.2 cut-off)")
-    ap.add_argument("--batch", type=int, default=48, help="Batch size for the batched exhaustive baseline")
+    ap.add_argument("--batch", type=int, default=4, help="Verification batch size (an RTX 5060 Laptop saturates at 2-4 sequences)")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", default="speculative_benchmark_telemetry.json")
     a = ap.parse_args()
@@ -71,7 +71,7 @@ def main() -> int:
                "vanilla_ms": vanilla.timings_ms["total"], "batched_ms": batched.timings_ms["total"],
                "max_abs_diff_batched_vs_sequential": float(np.max(np.abs(vanilla.deltas - batched.deltas)))}
         for k in ks:
-            sp = ism.speculative(seq, *win, k=k)
+            sp = ism.speculative(seq, *win, k=k, batch_size=a.batch)
             found = set(sp.high_impact())
             rec[f"k{k}"] = {"ms": sp.timings_ms["total"], "alpha": sp.acceptance_rate,
                             "recall": (len(truth & found) / len(truth)) if truth else None,
