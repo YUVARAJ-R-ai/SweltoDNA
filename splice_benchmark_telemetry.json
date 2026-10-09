@@ -1,56 +1,60 @@
 {
-  "n_total_loci": 9000,
-  "n_donors": 9,
-  "n_acceptors": 5,
-  "imbalance_ratio": 641.8571428571429,
-  "donor_roc_auc": 1.0,
-  "acceptor_roc_auc": 1.0,
-  "mean_roc_auc": 1.0,
-  "donor_pr_auc": 1.0,
-  "acceptor_pr_auc": 1.0,
-  "mean_pr_auc": 1.0,
-  "donor_top_1_acc": 1.0,
-  "donor_top_k_acc": 1.0,
-  "acceptor_top_1_acc": 1.0,
-  "acceptor_top_k_acc": 1.0,
+  "n_total_loci": 62739000,
+  "n_donors": 56008,
+  "n_acceptors": 56011,
+  "imbalance_ratio": 559.0746301966631,
+  "donor_roc_auc": 0.9989023950392043,
+  "acceptor_roc_auc": 0.9984368688766869,
+  "mean_roc_auc": 0.9986696319579456,
+  "donor_pr_auc": 0.6295290909497915,
+  "acceptor_pr_auc": 0.5520295579155488,
+  "mean_pr_auc": 0.5907793244326701,
+  "donor_top_1_acc": 0.6041636909012998,
+  "donor_top_k_acc": 0.8104556491929724,
+  "acceptor_top_1_acc": 0.5418399957151274,
+  "acceptor_top_k_acc": 0.7375872596454268,
   "donor_threshold_metrics": {
     "t_0.2": {
       "threshold": 0.2,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.16686597682632134,
+      "recall": 0.961666190544208,
+      "f1": 0.28438598899648354
     },
     "t_0.5": {
       "threshold": 0.5,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.28700440402817207,
+      "recall": 0.8971039851449792,
+      "f1": 0.4348804500703235
     },
     "t_0.8": {
       "threshold": 0.8,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.4655662812022974,
+      "recall": 0.7569275817740323,
+      "f1": 0.5765263451352105
     }
   },
   "acceptor_threshold_metrics": {
     "t_0.2": {
       "threshold": 0.2,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.13624636300435153,
+      "recall": 0.9447072896395351,
+      "f1": 0.2381469954836053
     },
     "t_0.5": {
       "threshold": 0.5,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.24568129377412043,
+      "recall": 0.8592419346199853,
+      "f1": 0.3821073984827493
     },
     "t_0.8": {
       "threshold": 0.8,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0
+      "precision": 0.4236746243051455,
+      "recall": 0.6790094802806591,
+      "f1": 0.5217796924090055
     }
-  }
+  },
+  "model": "LongSafari/hyenadna-small-32k-seqlen-hf",
+  "splice_head": "checkpoints/splice_head.pt",
+  "windows": 62739,
+  "split": "data/processed/spliceai_test.parquet"
 }

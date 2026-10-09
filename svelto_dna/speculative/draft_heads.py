@@ -261,7 +261,7 @@ class SpeculativeDraftLoss(nn.Module):
         self,
         gamma: float = 0.85,
         reduction: str = "mean",
-        ignore_index: Optional[int] = 0,
+        ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
         self.gamma = gamma
