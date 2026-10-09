@@ -1,0 +1,78 @@
+{
+  "model": "LongSafari/hyenadna-small-32k-seqlen-hf",
+  "steps": 4000,
+  "batch": 16,
+  "lr": 0.001,
+  "site_weight": 20.0,
+  "seed": 42,
+  "train_windows": 86811,
+  "val_windows": 1500,
+  "minutes": 14.0,
+  "best_val_mean_pr_auc": 0.5742389901919029,
+  "history": [
+    {
+      "step": 500,
+      "loss": 0.03199134021997452,
+      "val_mean_pr_auc": 0.4050200237187095,
+      "val_mean_roc_auc": 0.996891883409575,
+      "val_donor_top_1": 0.46810146041506534,
+      "val_acceptor_top_1": 0.4232268121590023
+    },
+    {
+      "step": 1000,
+      "loss": 0.03280642256140709,
+      "val_mean_pr_auc": 0.47951307964452117,
+      "val_mean_roc_auc": 0.9973043242105399,
+      "val_donor_top_1": 0.5219062259800153,
+      "val_acceptor_top_1": 0.45908028059236167
+    },
+    {
+      "step": 1500,
+      "loss": 0.027337348088622093,
+      "val_mean_pr_auc": 0.5120330650958176,
+      "val_mean_roc_auc": 0.9980412362497051,
+      "val_donor_top_1": 0.5349730976172176,
+      "val_acceptor_top_1": 0.49649259547934527
+    },
+    {
+      "step": 2000,
+      "loss": 0.024744361639022827,
+      "val_mean_pr_auc": 0.5317908099220214,
+      "val_mean_roc_auc": 0.9982386525843703,
+      "val_donor_top_1": 0.5611068408916219,
+      "val_acceptor_top_1": 0.5058456742010912
+    },
+    {
+      "step": 2500,
+      "loss": 0.020145582035183907,
+      "val_mean_pr_auc": 0.5554758516320808,
+      "val_mean_roc_auc": 0.9984408873676843,
+      "val_donor_top_1": 0.5772482705611068,
+      "val_acceptor_top_1": 0.524551831644583
+    },
+    {
+      "step": 3000,
+      "loss": 0.01891530118882656,
+      "val_mean_pr_auc": 0.5631946663939627,
+      "val_mean_roc_auc": 0.9984828333630815,
+      "val_donor_top_1": 0.5918524212144505,
+      "val_acceptor_top_1": 0.5151987529228371
+    },
+    {
+      "step": 3500,
+      "loss": 0.016314905136823654,
+      "val_mean_pr_auc": 0.5741395991986515,
+      "val_mean_roc_auc": 0.9985285680101845,
+      "val_donor_top_1": 0.6033820138355112,
+      "val_acceptor_top_1": 0.5292283710054559
+    },
+    {
+      "step": 4000,
+      "loss": 0.013387327082455158,
+      "val_mean_pr_auc": 0.5742389901919029,
+      "val_mean_roc_auc": 0.9985354431667909,
+      "val_donor_top_1": 0.6041506533435819,
+      "val_acceptor_top_1": 0.524551831644583
+    }
+  ]
+}

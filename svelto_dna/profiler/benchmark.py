@@ -95,7 +95,7 @@ class BaselineProfiler:
     def profile_window(self, seq_len: int) -> WindowMetric:
         """Profiles a single context window length."""
         raw_seq = self._generate_synthetic_dna(seq_len)
-        encoded = self.tokenizer.encode(raw_seq, max_length=seq_len, padding=False, return_tensors="pt")
+        encoded = self.backbone.encode(raw_seq)   # the backbone's own vocabulary (real checkpoints differ from GenomicTokenizer)
         input_ids = encoded["input_ids"].to(self.device)
         attention_mask = encoded["attention_mask"].to(self.device)
 
