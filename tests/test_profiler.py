@@ -42,3 +42,12 @@ class TestBaselineProfiler:
 
         loaded = json.loads(out_file.read_text())
         assert loaded["metrics"][0]["seq_length"] == 1024
+
+
+def test_profiler_tokenizes_with_the_backbones_own_vocabulary(monkeypatch):
+    backbone = SveltoBackbone(model_name="mock", hidden_dim=32, num_layers=1)
+    calls = []
+    real_encode = backbone.encode
+    monkeypatch.setattr(backbone, "encode", lambda s: calls.append(s) or real_encode(s))
+    BaselineProfiler(backbone=backbone, lengths=[64], num_warmup=0, num_repeats=1).run()
+    assert calls and len(calls[0]) == 64
