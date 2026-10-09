@@ -132,3 +132,21 @@ def test_concurrent_clients_are_isolated_and_deterministic():
             assert rb["p_mut"][5][1] == pytest.approx(0.9)          # b never sees it
             _mutate(b, "b2", F + 1, "T", "A", F - 5, F + 5)
             assert b.receive_json()["p_mut"] == ra["p_mut"]          # same edit, same answer
+
+
+def test_scan_runs_speculative_ism_and_reports_measured_telemetry():
+    """#4 + #9: the server's scan returns verified deltas and measured (not simulated) telemetry."""
+    region = synthetic_region()
+    F = region.feature
+    with TestClient(create_app(FakePredictor(), region, context=200)) as c, c.websocket_connect("/ws/splice-session") as ws:
+        ws.receive_json()
+        ws.send_json({"session_id": "s", "request_id": "scan1", "action": "scan", "window_start": F - 8, "window_end": F + 8, "k": 12})
+        r = ws.receive_json()
+        assert r["status"] == "success" and r["type"] == "scan"
+        assert len(r["candidates"]) == 48 and r["verified"] == 12
+        verified = [cand for cand in r["candidates"] if cand[2] is not None]
+        assert len(verified) == 12 and all(cand[0] - (F - 8) in range(16) for cand in verified)
+        t = r["telemetry"]
+        assert t["source"] == "measured" and "basis" in t
+        assert t["active_flops_saved"] == pytest.approx(1 - 13 / 49)
+        assert 0 <= t["acceptance_rate"] <= 1 and t["speedup_ratio"] > 0

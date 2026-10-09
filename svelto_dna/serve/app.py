@@ -9,12 +9,15 @@ avoided, not just hidden); a request already running finishes but is reported as
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
+
+import numpy as np
 from typing import Any, Dict
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from svelto_dna.serve.regions import Region
 from svelto_dna.serve.session import SpliceSession
+from svelto_dna.speculative.verify import SpeculativeISM
 
 
 def create_app(predictor, region: Region, context: int = 1000) -> FastAPI:
@@ -41,10 +44,29 @@ def create_app(predictor, region: Region, context: int = 1000) -> FastAPI:
         def base(msg: Dict[str, Any], status: str) -> Dict[str, Any]:
             return {"session_id": msg.get("session_id"), "request_id": msg.get("request_id"), "status": status, "engine": engine}
 
+        def scan(msg: Dict[str, Any]) -> Dict[str, Any]:
+            """Speculative ISM on the reference (#4). Vanilla time = (1 + candidates) × this scan's measured single pass."""
+            ism = SpeculativeISM(predictor, context=context, delta_window=50, threshold=float(msg.get("threshold", 0.2)))
+            seq = "".join(region.seq)
+            start, end = max(0, int(msg["window_start"])), min(len(seq), int(msg["window_end"]))
+            res = ism.speculative(seq, start, end, k=int(msg.get("k", 48)))
+            n = len(res.candidates)
+            vanilla = (1 + n) * res.timings_ms["reference"]
+            return {
+                "type": "scan", "window_start": start, "window_end": end, "verified": res.verified,
+                "candidates": [[p, b, None if np.isnan(d) else round(float(d), 4)] for (p, b), d in zip(res.candidates, res.deltas)],
+                "latency_ms": round(res.timings_ms["total"], 2),
+                "telemetry": {"vanilla_latency_ms": round(vanilla, 2), "speedup_ratio": round(vanilla / res.timings_ms["total"], 2),
+                              "acceptance_rate": res.acceptance_rate, "active_flops_saved": 1 - (1 + res.verified) / (1 + n), "source": "measured",
+                              "basis": f"vanilla = (1 + {n} candidates) x measured single-pass latency ({res.timings_ms['reference']:.1f} ms) of this scan"},
+            }
+
         async def run(gen: int, msg: Dict[str, Any]) -> None:
             def work():
                 if gen != latest["gen"]:
                     return None                                        # superseded before it started: skip the GPU work
+                if msg.get("action") == "scan":
+                    return scan(msg)
                 t0 = time.perf_counter()
                 out = session.score(int(msg.get("window_start", 0)), int(msg.get("window_end", len(region.seq))))
                 out["latency_ms"] = round((time.perf_counter() - t0) * 1000, 2)
@@ -54,7 +76,7 @@ def create_app(predictor, region: Region, context: int = 1000) -> FastAPI:
                 if out is None or gen != latest["gen"]:
                     await send({**base(msg, "cancelled")})
                 else:
-                    await send({**base(msg, "success"), **out, "telemetry": None})
+                    await send({**base(msg, "success"), "telemetry": None, **out})
             except Exception as e:                                     # report, keep the session alive
                 await send({**base(msg, "error"), "error": str(e)})
 
@@ -74,7 +96,7 @@ def create_app(predictor, region: Region, context: int = 1000) -> FastAPI:
                         await send({**base(msg, "success"), "window_start": 0, "window_end": 0, "p_ref": [], "p_mut": [],
                                     "delta_scores": {}, "latency_ms": 0, "telemetry": None})
                         continue
-                    elif action != "score":
+                    elif action not in ("score", "scan"):
                         raise ValueError(f"unknown action {action!r}")
                 except (KeyError, ValueError) as e:
                     await send({**base(msg, "error"), "error": str(e)})
