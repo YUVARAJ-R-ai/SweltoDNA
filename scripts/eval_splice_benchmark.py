@@ -64,6 +64,18 @@ def parse_args() -> argparse.Namespace:
         help="Optional path to trained SpeculativeDraftHeads checkpoint (.pt/.pth) from Issue #3 for downstream draft benchmarking.",
     )
     parser.add_argument(
+        "--splice-head",
+        type=str,
+        default=None,
+        help="Trained splice head (scripts/train_splice_head.py); evaluates backbone + head in batches.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=32,
+        help="Windows per forward pass with --splice-head.",
+    )
+    parser.add_argument(
         "--output-telemetry",
         type=str,
         default="splice_benchmark_telemetry.json",
@@ -82,6 +94,32 @@ def parse_args() -> argparse.Namespace:
         help="Random seed for reproducible evaluation.",
     )
     return parser.parse_args()
+
+
+def evaluate_trained_head(args: argparse.Namespace, df: pl.DataFrame) -> int:
+    """Batched evaluation of a trained SplicePredictor; scores only each window's labelled block."""
+    from svelto_dna.model.splice_head import SplicePredictor
+
+    pred = SplicePredictor.load(args.splice_head)
+    print(f"Splice head      : {args.splice_head} on {pred.backbone.model_name}")
+    rows = list(df.select("window_sequence", "labels", "context").iter_rows())
+    ys, ps = [], []
+    for i in range(0, len(rows), args.batch_size):
+        chunk = rows[i:i + args.batch_size]
+        probs = pred.predict([r[0] for r in chunk]).numpy()
+        for (seq, labels, ctx), p in zip(chunk, probs):
+            ctx = int(ctx or 0)
+            ys.extend(labels)
+            ps.append(p[ctx: ctx + len(labels)])
+        if (i // args.batch_size) % 200 == 0:
+            print(f"  {i + len(chunk):,}/{len(rows):,} windows", flush=True)
+    report = compute_splice_metrics(np.array(ys, dtype=int), np.vstack(ps))
+    print("\n" + report.summary() + "\n")
+    out = report.to_dict()
+    out.update({"model": pred.backbone.model_name, "splice_head": args.splice_head, "windows": len(rows), "split": str(args.test_parquet)})
+    Path(args.output_telemetry).write_text(json.dumps(out, indent=2))
+    print(f"✓ Telemetry saved to: {args.output_telemetry}")
+    return 0
 
 
 def main() -> int:
@@ -105,6 +143,9 @@ def main() -> int:
         df = df.slice(0, args.max_samples)
 
     print(f"Evaluating on {len(df)} test sequences...")
+
+    if args.splice_head:
+        return evaluate_trained_head(args, df)
 
     # Initialize tokenizer and backbone
     tokenizer = GenomicTokenizer()
