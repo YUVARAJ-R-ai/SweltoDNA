@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useExplorerCtx, useExplorer, useLevel } from "@/lib/explorer-context";
+import { useExplorerCtx, useExplorer, useLevel, useRegionLabels } from "@/lib/explorer-context";
 import { impactTier } from "@/lib/splice/scorer";
 import { WINDOW } from "@/lib/store";
 import { heatCss } from "@/scene/engine";
@@ -18,6 +18,7 @@ interface Tip { x: number; y: number; text: string; color: string }
 export function SequenceRibbon({ onPick }: { onPick: (i: number, x: number, y: number) => void }) {
   const { store } = useExplorerCtx();
   const level = useLevel();
+  const sourceNote = useRegionLabels().sourceNote;
   const { seq, region, selected, windowStart, scan, tracks, edits } = useExplorer((s) => s);
   const scrollRef = useRef<HTMLDivElement>(null), trackRef = useRef<HTMLCanvasElement>(null), overviewRef = useRef<HTMLDivElement>(null);
   const [tip, setTip] = useState<Tip | null>(null);
@@ -29,7 +30,10 @@ export function SequenceRibbon({ onPick }: { onPick: (i: number, x: number, y: n
     const el = scrollRef.current; if (!el) return;
     const x = selected * BW;
     if (x < el.scrollLeft + 48 || x > el.scrollLeft + el.clientWidth - 48) {
-      el.scrollTo({ left: x - el.clientWidth / 2, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+      // Glide for nearby moves; jump for far ones (watching thousands of bases fly past helps no one).
+      const far = Math.abs(x - (el.scrollLeft + el.clientWidth / 2)) > el.clientWidth * 2;
+      const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollTo({ left: x - el.clientWidth / 2, behavior: far || reduced ? "auto" : "smooth" });
     }
   }, [selected]);
 
@@ -104,7 +108,7 @@ export function SequenceRibbon({ onPick }: { onPick: (i: number, x: number, y: n
         </div>
       </div>
       <div className="mt-1.5 flex justify-between gap-3 text-[11px] text-[var(--label3)]">
-        <span>Reference <span className="text-[var(--blue)]">■</span> · mutant gain <span className="text-[var(--orange)]">■</span> · loss <span className="text-[var(--red)]">□</span> · synthetic sequence, illustrative coordinates</span>
+        <span>Reference <span className="text-[var(--blue)]">■</span> · mutant gain <span className="text-[var(--orange)]">■</span> · loss <span className="text-[var(--red)]">□</span> · {sourceNote}</span>
         <span className="sv-mono">{(region.coord0 + first).toLocaleString("en-US")}–{(region.coord0 + last).toLocaleString("en-US")} · {items.length} of {seq.length.toLocaleString()} in DOM</span>
       </div>
       {tip && <div role="tooltip" data-testid="track-tooltip" className="sv-mat sv-thick pointer-events-none fixed z-[9] -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-[10px] px-2.5 py-1.5 text-xs font-medium" style={{ left: tip.x, top: tip.y, color: tip.color }}>{tip.text}</div>}

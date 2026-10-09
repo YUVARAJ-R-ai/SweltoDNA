@@ -20,6 +20,7 @@ export function PerformanceCard() {
       <Row label="Draft acceptance" value={t ? `${(t.acceptanceRate * 100).toFixed(0)}%` : "—"} />
       <Row label="FLOPs saved" value={t ? `${(t.flopsSaved * 100).toFixed(0)}%` : "—"} />
       <div className="sv-hr my-2" />
+      {measured && t?.basis && <p className="mb-1 text-[11px] leading-snug text-[var(--label3)]" data-testid="perf-basis">{t.basis}</p>}
       <Row label="Scorer time · measured" value={latency === null ? "—" : latency < 1 ? `${Math.max(1, Math.round(latency * 1000))} µs` : `${latency.toFixed(2)} ms`} />
     </section>
   );

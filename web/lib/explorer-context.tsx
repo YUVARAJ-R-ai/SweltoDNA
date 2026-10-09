@@ -5,6 +5,7 @@ import type { ExplorerState, ExplorerStore } from "./store";
 import type { UIState, UIStore } from "./ui-store";
 import type { Sound } from "./sound";
 import type { SpliceModel } from "./splice/scorer";
+import type { SpliceClient } from "./splice/client";
 import type { FrameInfo, SceneEngine } from "@/scene/engine";
 
 export interface IslandOptions { hold?: number; wrap?: boolean }
@@ -26,6 +27,7 @@ export interface ExplorerCtx {
   island: IslandApi;
   sound: Sound;
   scanModel: SpliceModel;
+  client: SpliceClient;
 }
 
 export const ExplorerContext = createContext<ExplorerCtx | null>(null);
@@ -36,6 +38,21 @@ export function useExplorerCtx() {
 }
 export function useExplorer<T>(sel: (s: ExplorerState) => T): T { return useStore(useExplorerCtx().store, sel); }
 export function useUI<T>(sel: (s: UIState) => T): T { return useStore(useExplorerCtx().ui, sel); }
+
+/** Names that depend on the region being shown (synthetic demo or a real GRCh38 window from the server). */
+export function useRegionLabels() {
+  const region = useExplorer((s) => s.region);
+  const k = region.exons.findIndex(([, e]) => e === region.feature);
+  const exon = `${region.gene} exon ${k >= 0 ? k + region.firstExonNumber : ""}`.trim();
+  const chromNumber = region.chrom.replace(/^chr/, "");
+  return {
+    levels: ["Brain", `Chromosome ${chromNumber}`, exon, "Splice landscape"] as const,
+    exon,
+    band: region.gene === "MAPT" ? "17q21.31 · MAPT" : `${region.chrom} · ${region.gene}`,
+    synthetic: region.synthetic,
+    sourceNote: region.synthetic ? "synthetic sequence, illustrative coordinates" : region.description ?? "GRCh38",
+  };
+}
 
 /** Current zoom level (integer), updated only when it changes. */
 export function useLevel() {

@@ -4,9 +4,9 @@ import { ExplorerContext, FrameBus, type ExplorerCtx, type IslandApi } from "@/l
 import { createExplorerStore } from "@/lib/store";
 import { createUIStore } from "@/lib/ui-store";
 import { Sound } from "@/lib/sound";
-import { syntheticRegion, type Base } from "@/lib/splice/sequence";
+import { syntheticRegion, type Base, type Region } from "@/lib/splice/sequence";
 import { SpliceModel, impactTier } from "@/lib/splice/scorer";
-import { LocalHeuristicClient, WebSocketClient } from "@/lib/splice/client";
+import { LocalHeuristicClient, type SpliceClient } from "@/lib/splice/client";
 import { runTour } from "@/lib/tour";
 import { SceneEngine } from "@/scene/engine";
 import { WINDOW } from "@/lib/store";
@@ -25,22 +25,23 @@ import { Hint } from "./chrome/hint";
 
 const TIER_COLOR = { High: "var(--red)", Moderate: "var(--orange)", Low: "var(--yellow)", Minimal: "var(--label2)" } as const;
 
-export default function Explorer() {
+export default function Explorer({ region: givenRegion, client: givenClient }: { region?: Region; client?: SpliceClient } = {}) {
   const islandRef = useRef<IslandApi>(null);
   const host = useRef<HTMLDivElement>(null);
   const tourAbort = useRef<AbortController | null>(null);
 
   const ctx = useMemo<ExplorerCtx>(() => {
-    const region = syntheticRegion();
-    const ws = process.env.NEXT_PUBLIC_SPLICE_WS;
-    const client = ws ? new WebSocketClient(ws, crypto.randomUUID()) : new LocalHeuristicClient(region);
+    const region = givenRegion ?? syntheticRegion();
+    const client = givenClient ?? new LocalHeuristicClient(region);
     return {
+      client,
       store: createExplorerStore(region, client), ui: createUIStore(), engine: { current: null }, frames: new FrameBus(), sound: new Sound(),
       scanModel: new SpliceModel(region),
       island: { show: (n, o) => islandRef.current?.show(n, o), hide: () => islandRef.current?.hide() },
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one store/engine per mount; the loader remounts on a new server
   }, []);
-  const { store, ui, engine, frames, island, sound, scanModel } = ctx;
+  const { store, ui, engine, frames, island, sound, scanModel, client } = ctx;
 
   const mutate = async (i: number, b: Base) => {
     if (store.getState().seq[i] === b) return;
@@ -56,7 +57,22 @@ export default function Explorer() {
     const e = engine.current; if (!e || e.scanning) return;
     const w0 = store.getState().windowStart, positions = Array.from({ length: WINDOW }, (_, k) => w0 + k);
     ui.getState().set({ scanning: true });
-    if (!ui.getState().tourOn) island.show(<><Dot color="var(--blue)" />Scanning {WINDOW * 3} variants</>, { hold: 0 });
+    if (!ui.getState().tourOn) island.show(<><Dot color="var(--blue)" />Scanning {WINDOW * 3} variants{client.scan ? " on the server" : ""}</>, { hold: 0 });
+    if (client.scan) {
+      // #4 on the server: speculative scan, exact verified deltas, measured telemetry. Unverified positions stay unknown.
+      client.scan(w0, w0 + WINDOW, 48).then((res) => {
+        const best = new Map<number, [number, Base]>();
+        for (const c of res.candidates) if (c.delta !== null && (!best.has(c.position) || c.delta > best.get(c.position)![0])) best.set(c.position, [c.delta, c.alt]);
+        store.getState().setTelemetry(res.telemetry);
+        e.runScan(positions, (i) => { const b = best.get(i); if (b) { store.getState().setScan(i, b[0], b[1]); sound.scanTick(b[0]); } }, () => {
+          const hi = [...best.values()].filter(([d]) => d > 0.8).length;
+          ui.getState().set({ scanning: false });
+          island.show(<><Dot color="var(--red)" />{res.verified} of {res.candidates.length} verified<span className="text-[var(--label2)]">{hi} high · {res.telemetry ? `${res.telemetry.speedup.toFixed(1)}× measured` : ""}</span></>, { hold: 3600 });
+          sound.chord();
+        });
+      }).catch((err: Error) => { ui.getState().set({ scanning: false }); island.show(<><Dot color="var(--red)" />Scan failed: {err.message}</>, { hold: 3600 }); });
+      return;
+    }
     let k = 0;
     e.runScan(positions, (i) => { const r = scanModel.scanPosition(i); store.getState().setScan(i, r.best, r.alt); if (k++ % 3 === 0) sound.scanTick(r.best); }, () => {
       const sc = store.getState().scan, hi = positions.filter((i) => sc[i] > 0.8).length, mod = positions.filter((i) => sc[i] > 0.5 && sc[i] <= 0.8).length;

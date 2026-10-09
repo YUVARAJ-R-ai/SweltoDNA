@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useExplorerCtx, useUI } from "@/lib/explorer-context";
+import { useExplorerCtx, useRegionLabels, useUI } from "@/lib/explorer-context";
 import { DitherShader, ditherToCanvas, fitImageData, type ColorMode, type DitheringMode } from "@/components/ui/dither-shader";
 import { describeDelta, impactTier } from "@/lib/splice/scorer";
 import { Dot } from "./dynamic-island";
@@ -25,6 +25,7 @@ function wrap(g: CanvasRenderingContext2D, text: string, maxW: number) {
 export function SnapshotSheet() {
   const { ui, store, island, sound } = useExplorerCtx();
   const url = useUI((s) => s.snapshot);
+  const labels = useRegionLabels();
   const [mode, setMode] = useState<DitheringMode>("bayer");
   const [tone, setTone] = useState<Tone>("paper");
   const [grain, setGrain] = useState(2);
@@ -34,10 +35,10 @@ export function SnapshotSheet() {
   const s = store.getState(), last = s.edits[s.edits.length - 1], i = last ? last.position : s.selected;
   const changed = s.seq[i] !== s.region.seq[i], d = changed ? s.deltaAt(i) : null;
   const card = {
-    title: changed ? `${s.region.seq[i]} → ${s.seq[i]}` : `${s.region.gene} exon 10`,
-    sub: `${s.region.gene} exon 10 · ${s.region.chrom}:${(s.region.coord0 + i).toLocaleString("en-US")}`,
+    title: changed ? `${s.region.seq[i]} → ${s.seq[i]}` : labels.exon,
+    sub: `${labels.exon} · ${s.region.chrom}:${(s.region.coord0 + i).toLocaleString("en-US")}`,
     line: d ? `${impactTier(d.max)} impact. ${describeDelta(d, i)}` : "A synthetic splice-site explorer.",
-    foot: `Svelto · synthetic sequence · ${s.engine.toLowerCase()}`,
+    foot: `Svelto · ${labels.synthetic ? "synthetic sequence" : s.region.chrom + " GRCh38"} · ${s.engine.toLowerCase()}`,
   };
   const params = { gridSize: grain, ditherMode: mode, colorMode: T.colorMode, primaryColor: T.primary, secondaryColor: T.secondary, contrast: 1.35, brightness: 0.04, threshold: 0.5, backgroundColor: T.paper };
   const close = () => ui.getState().set({ snapshot: null });

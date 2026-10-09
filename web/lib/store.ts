@@ -31,6 +31,8 @@ export interface ExplorerState {
   undo(): Promise<void>;
   reset(): Promise<void>;
   setScan(i: number, best: number, alt: Base): void;
+  setScanMany(entries: [number, number, Base][]): void;
+  setTelemetry(t: Telemetry | null): void;
   /** Δ for any edited position, from the current tracks (null if unedited or outside the tracks). */
   deltaAt(i: number): Delta | null;
 }
@@ -61,7 +63,16 @@ export function createExplorerStore(region: Region, client: SpliceClient) {
           delta: last ? deltaFrom(r.scores, last.position) : null,
         });
       } catch (e) {
-        set({ busy: false, error: (e as Error).message });
+        const message = (e as Error).message;
+        if (/cancel/i.test(message)) {
+          // The server applied the edit but skipped scoring it because a newer edit superseded it.
+          // Keep client state in step with the server; the newer edit's response brings fresh tracks.
+          const seq = get().seq.slice(); seq[i] = b;
+          const edits = record ? [...get().edits, record] : pop ? get().edits.slice(0, -1) : get().edits;
+          set({ seq, edits, busy: false });
+          return;
+        }
+        set({ busy: false, error: message });
       }
     };
 
@@ -106,6 +117,12 @@ export function createExplorerStore(region: Region, client: SpliceClient) {
         scan[i] = best; scanAlt[i] = alt;
         set({ scan, scanAlt });
       },
+      setScanMany(entries) {
+        const scan = get().scan.slice(), scanAlt = get().scanAlt.slice();
+        for (const [i, best, alt] of entries) { scan[i] = best; scanAlt[i] = alt; }
+        set({ scan, scanAlt });
+      },
+      setTelemetry(telemetry) { set({ telemetry }); },
       deltaAt(i) {
         const { seq, tracks } = get();
         if (seq[i] === region.seq[i] || !tracks || i < tracks.start || i >= tracks.end) return null;

@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useExplorerCtx, useLevel } from "@/lib/explorer-context";
-import { LEVELS } from "@/scene/engine";
+import { useExplorerCtx, useLevel, useRegionLabels } from "@/lib/explorer-context";
 
 /** Direct manipulation of zoom: grab offset respected, rubber-banded ends, release velocity handed to the spring. */
 export function DepthScrubber() {
   const { frames, engine } = useExplorerCtx();
   const level = useLevel();
+  const LEVELS = useRegionLabels().levels;
   const root = useRef<HTMLDivElement>(null), thumb = useRef<HTMLDivElement>(null), fill = useRef<HTMLDivElement>(null), label = useRef<HTMLDivElement>(null);
   const drag = useRef<{ top: number; H: number; off: number; hist: [number, number][] } | null>(null);
   const [dragging, setDragging] = useState(false);

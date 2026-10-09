@@ -55,6 +55,7 @@ test("#7 radial switcher opens from a chip and applies the edit", async ({ page 
 test("#8 dual-track tooltip reports coordinate, class, Δ and tier", async ({ page }) => {
   await open(page, "#z=2&mut");
   await expect(page.getByTestId("variant-title")).toHaveText("T → A");
+  await expect(page.locator('[data-testid="chip"][data-i="5000"]')).toBeInViewport();
   const track = page.getByTestId("dual-track");
   const box = (await track.boundingBox())!;
   const first = await page.getByTestId("chip").first().getAttribute("data-i");
@@ -92,5 +93,5 @@ test("no serious accessibility violations in the sequence view", async ({ page }
   await expect(page.getByTestId("variant-title")).toBeVisible();
   const r = await new AxeBuilder({ page }).exclude("[data-testid=scene]").analyze();
   const serious = r.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
-  expect(serious.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+  expect(serious.map((v) => `${v.id}: ${v.nodes.map((n) => `${n.target.join(" ")} → ${n.failureSummary?.split("\n").slice(-1)[0]}`).join(" | ")}`)).toEqual([]);
 });

@@ -58,3 +58,25 @@ describe("deltaAt and scan", () => {
     expect(store.getState().scan[F]).toBe(1);
   });
 });
+
+describe("server-side cancellation and scan results", () => {
+  it("keeps an edit the server applied but reported as cancelled (stale scoring), without an error", async () => {
+    const region = syntheticRegion();
+    const local = new LocalHeuristicClient(region);
+    const flaky = { ...local, engine: local.engine, score: local.score.bind(local), reset: local.reset.bind(local), close() {},
+      mutate: async () => { throw new Error("Request cancelled as stale"); } };
+    const s = createExplorerStore(region, flaky as unknown as LocalHeuristicClient);
+    await s.getState().init();
+    await s.getState().mutate(region.feature + 1, "A");
+    expect(s.getState().seq[region.feature + 1]).toBe("A");
+    expect(s.getState().edits).toHaveLength(1);
+    expect(s.getState().error).toBeNull();
+  });
+  it("setScanMany publishes all results at once and setTelemetry records the source", () => {
+    store.getState().setScanMany([[F, 0.9, "A"], [F + 1, 0.8, "C"]]);
+    expect(store.getState().scan[F]).toBeCloseTo(0.9, 6);   // Float32Array storage
+    expect(store.getState().scanAlt[F + 1]).toBe("C");
+    store.getState().setTelemetry({ vanillaLatencyMs: 100, speedup: 8, acceptanceRate: 0.5, flopsSaved: 0.6, source: "measured" });
+    expect(store.getState().telemetry?.source).toBe("measured");
+  });
+});

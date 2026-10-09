@@ -15,6 +15,17 @@ export interface Region {
   chrom: string;
   gene: string;
   synthetic: boolean;
+  description?: string;
+}
+
+/** Region as sent by the #6 server's hello message. */
+export interface WireRegion {
+  length: number; chrom: string; gene: string; coord0: number; feature: number;
+  exons: [number, number][]; first_exon_number: number; synthetic: boolean; description: string; sequence: string;
+}
+export function regionFromWire(w: WireRegion): Region {
+  return { seq: w.sequence.split("") as Base[], exons: w.exons.map(([s, e]) => [s, e] as const), firstExonNumber: w.first_exon_number,
+    feature: w.feature, coord0: w.coord0, chrom: w.chrom, gene: w.gene, synthetic: w.synthetic, description: w.description };
 }
 
 function parkMiller(seed: number) {

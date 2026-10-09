@@ -1,11 +1,11 @@
 "use client";
-import { useExplorerCtx, useLevel } from "@/lib/explorer-context";
-import { LEVELS } from "@/scene/engine";
+import { useExplorerCtx, useLevel, useRegionLabels } from "@/lib/explorer-context";
 
 /** Wayfinding: where am I, where can I go. Each crumb jumps the zoom spring to that level. */
 export function Toolbar() {
   const { engine, ui } = useExplorerCtx();
   const level = useLevel();
+  const LEVELS = useRegionLabels().levels;
   return (
     <nav aria-label="Scale" className="sv-mat sv-regular fixed left-4 top-4 z-[6] flex h-11 items-center gap-1 rounded-[22px] pl-4 pr-2">
       <div className="mr-2.5 flex items-center gap-2 text-sm font-semibold tracking-[-0.01em]">

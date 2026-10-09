@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { useExplorerCtx, useExplorer } from "@/lib/explorer-context";
+import { useExplorerCtx, useExplorer, useRegionLabels } from "@/lib/explorer-context";
 import type { ScreenAnchor } from "@/scene/engine";
 
 /** DOM labels pinned to 3D anchors; positions come from the frame bus, not React state. */
 export function WorldLabels() {
   const { frames, engine } = useExplorerCtx();
   const delta = useExplorer((s) => s.delta);
+  const labels = useRegionLabels();
+  const gene = useExplorer((s) => s.region.gene);
   const hot = useRef<HTMLButtonElement>(null), band = useRef<HTMLButtonElement>(null);
   const loss = useRef<HTMLDivElement>(null), gain = useRef<HTMLDivElement>(null);
   useEffect(() => frames.subscribe((f) => {
@@ -23,8 +25,8 @@ export function WorldLabels() {
   const gainVal = delta ? Math.max(delta.donorGain, delta.acceptorGain) : 0;
   return (
     <>
-      <button ref={hot} className="sv-tag3d sv-mat sv-regular cursor-pointer" style={{ opacity: 0 }} onClick={() => engine.current?.setZoomTarget(1)}>MAPT</button>
-      <button ref={band} className="sv-tag3d sv-mat sv-regular cursor-pointer" style={{ opacity: 0 }} onClick={() => engine.current?.setZoomTarget(2)}>17q21.31 · MAPT</button>
+      <button ref={hot} className="sv-tag3d sv-mat sv-regular cursor-pointer" style={{ opacity: 0 }} onClick={() => engine.current?.setZoomTarget(1)}>{gene}</button>
+      <button ref={band} className="sv-tag3d sv-mat sv-regular cursor-pointer" style={{ opacity: 0 }} onClick={() => engine.current?.setZoomTarget(2)}>{labels.band}</button>
       <div ref={loss} className="sv-tag3d sv-mat sv-regular" style={{ opacity: 0, color: "var(--red)" }}>{lossName} <span className="sv-mono">−{lossVal.toFixed(2)}</span></div>
       <div ref={gain} className="sv-tag3d sv-mat sv-regular" style={{ opacity: 0, color: "var(--orange)" }}>{gainName} <span className="sv-mono">+{gainVal.toFixed(2)}</span></div>
     </>

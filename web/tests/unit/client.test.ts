@@ -65,3 +65,32 @@ describe("WebSocketClient (#6 contract)", () => {
     await expect(p).rejects.toThrow(/cancelled/);
   });
 });
+
+describe("WebSocketClient: hello and server-side scan (#4/#9)", () => {
+  it("exposes the server's region and engine from the hello message", async () => {
+    const c = new WebSocketClient("ws://x", "s", FakeSocket as unknown as typeof WebSocket);
+    await new Promise((r) => setTimeout(r, 0));
+    FakeSocket.last.onmessage?.({ data: JSON.stringify({ type: "hello", engine: "hyenadna-small-32k + splice head",
+      region: { length: 4, chrom: "chr17", gene: "MAPT", coord0: 100, feature: 2, exons: [[0, 2]], first_exon_number: 10, synthetic: false, description: "real", sequence: "ACGT" } }) });
+    const h = await c.hello;
+    expect(h.engine).toBe("hyenadna-small-32k + splice head");
+    expect(h.region.seq.join("")).toBe("ACGT");
+    expect(h.region.synthetic).toBe(false);
+    expect(h.region.firstExonNumber).toBe(10);
+  });
+  it("maps a scan response to verified deltas and measured telemetry", async () => {
+    const c = new WebSocketClient("ws://x", "s", FakeSocket as unknown as typeof WebSocket);
+    const p = c.scan(10, 12, 2);
+    await new Promise((r) => setTimeout(r, 0));
+    const msg = JSON.parse(FakeSocket.last.sent[0]);
+    expect(msg).toMatchObject({ action: "scan", window_start: 10, window_end: 12, k: 2 });
+    FakeSocket.last.onmessage?.({ data: JSON.stringify({ session_id: "s", request_id: msg.request_id, status: "success", type: "scan", engine: "e",
+      window_start: 10, window_end: 12, verified: 2, latency_ms: 12.5,
+      candidates: [[10, "A", 0.91], [10, "C", null], [11, "G", 0.05]],
+      telemetry: { vanilla_latency_ms: 100, speedup_ratio: 8, acceptance_rate: 0.5, active_flops_saved: 0.6, source: "measured", basis: "b" } }) });
+    const r = await p;
+    expect(r.verified).toBe(2);
+    expect(r.candidates).toEqual([{ position: 10, alt: "A", delta: 0.91 }, { position: 10, alt: "C", delta: null }, { position: 11, alt: "G", delta: 0.05 }]);
+    expect(r.telemetry).toMatchObject({ speedup: 8, source: "measured", basis: "b" });
+  });
+});
