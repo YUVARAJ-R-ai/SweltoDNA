@@ -85,7 +85,12 @@ export function createExplorerStore(region: Region, client: SpliceClient) {
 
       async init() {
         const [ws, we] = trackWindow(get().selected);
-        set({ tracks: await client.score(ws, we), engine: client.engine });
+        try {
+          const tracks = await client.score(ws, we);
+          set({ tracks, engine: client.engine });
+        } catch (e) {
+          if (!/cancel/i.test((e as Error).message)) set({ error: (e as Error).message });
+        }
       },
       select(i, opts) {
         const sel = clamp(Math.round(i), 0, n - 1), w0 = get().windowStart;
@@ -94,7 +99,9 @@ export function createExplorerStore(region: Region, client: SpliceClient) {
         const t = get().tracks;
         if (t && (sel < t.start + 128 || sel > t.end - 128)) {
           const [ws, we] = trackWindow(sel);
-          client.score(ws, we).then((tracks) => set({ tracks })).catch((e) => set({ error: (e as Error).message }));
+          client.score(ws, we).then((tracks) => set({ tracks })).catch((e) => {
+            if (!/cancel/i.test((e as Error).message)) set({ error: (e as Error).message });
+          });
         }
       },
       async mutate(i, b) {
@@ -110,7 +117,12 @@ export function createExplorerStore(region: Region, client: SpliceClient) {
       async reset() {
         await client.reset();
         const [ws, we] = trackWindow(get().selected);
-        set({ seq: region.seq.slice(), edits: [], delta: null, tracks: await client.score(ws, we) });
+        try {
+          const tracks = await client.score(ws, we);
+          set({ seq: region.seq.slice(), edits: [], delta: null, tracks });
+        } catch (e) {
+          if (!/cancel/i.test((e as Error).message)) set({ error: (e as Error).message });
+        }
       },
       setScan(i, best, alt) {
         const scan = get().scan.slice(), scanAlt = get().scanAlt.slice();
