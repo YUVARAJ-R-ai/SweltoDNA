@@ -29,5 +29,7 @@
 - Try a learned variant-effect draft (trained on ISM labels) to improve recall at small K.
 
 ## Paper (2026-10-12)
-- IEEE conference paper: `docs/paper/ieee/svelto_dna.tex` + `refs.bib` + compiled PDF (4 pages). Build: `cd docs/paper/ieee && tectonic svelto_dna.tex`.
-- TODO before submission: author affiliations/e-mails; re-run timings on AC power (performance profile) and update Table II / Fig. 2.
+- IEEE conference paper: `docs/paper/ieee/svelto_dna.tex` + `refs.bib` (46 refs) + compiled PDF, 13 pages. Build: `cd docs/paper/ieee && tectonic svelto_dna.tex`.
+- Derived numbers: `scripts/paper_stats.py` -> `docs/paper/data/derived.json` (cost model, random/oracle recall, delta validation; `--fixture data/gt_fixture.json` on this branch since the #5 fixture lives on PR #17; `--measure-batch` re-measures batch scaling).
+- Case study covers all 8 #5 variants; ABAT, AAAS, AAGAB are on TRAINING chromosomes (disclosed in the paper). Only ABHD5, ABCA1 are test.
+- TODO before submission: author affiliations/e-mails; re-run benchmark, ablation and `paper_stats.py --measure-batch` on AC power (performance profile) and update Tables IX-XI / Fig. 3.
