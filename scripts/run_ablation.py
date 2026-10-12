@@ -27,6 +27,17 @@ from svelto_dna.speculative.verify import SpeculativeISM  # noqa: E402
 DELTA_WINDOW = 50
 
 
+def run_conditions() -> dict:
+    """Power state affects batch-1 (launch-overhead-bound) timings a lot on laptops; record it with the results."""
+    def read(path):
+        try:
+            return Path(path).read_text().strip()
+        except OSError:
+            return None
+    ac = [read(f) for f in Path("/sys/class/power_supply").glob("*/online")] if Path("/sys/class/power_supply").exists() else []
+    return {"on_ac_power": any(v == "1" for v in ac) if ac else None, "platform_profile": read("/sys/firmware/acpi/platform_profile")}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--checkpoint", required=True); ap.add_argument("--test", required=True)
@@ -84,7 +95,7 @@ def main() -> int:
     Path(a.out).write_text(json.dumps({"gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
                                        "backbone": pred.backbone.model_name, "dtype": str(pred.backbone.target_dtype), "width": a.width,
                                        "candidates": 3 * a.width, "threshold": a.threshold, "ks": ks, "contexts": contexts, "windows": a.windows,
-                                       "batch": a.batch, "seed": a.seed, "results": results}, indent=1))
+                                       "batch": a.batch, "seed": a.seed, "conditions": run_conditions(), "results": results}, indent=1))
     print(f"→ {a.out}")
     return 0
 

@@ -1,0 +1,54 @@
+[
+ {
+  "gene": "ABAT",
+  "variant": "chr16-8746099-G-A",
+  "clinvar_id": "635252",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.019648566842079163,
+   "DL": 0.9373917579650879,
+   "AG": 0.02071501687169075,
+   "AL": 0.0041843801736831665
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.0,
+   "DS_AL": 0.0,
+   "DS_DG": 0.201,
+   "DS_DL": 0.996,
+   "DP_AG": -2,
+   "DP_AL": -27,
+   "DP_DG": 3,
+   "DP_DL": -1
+  }
+ },
+ {
+  "gene": "ABCG8",
+  "variant": "chr2-43852353-G-C",
+  "clinvar_id": "1983599",
+  "junction_type": "acceptor",
+  "ours": {
+   "DG": 0.012019827961921692,
+   "DL": 0.0005720378831028938,
+   "AG": 0.047974880784749985,
+   "AL": 0.8398541212081909
+  },
+  "ours_peak": {
+   "component": "AL",
+   "offset": -1
+  },
+  "spliceai_published": {
+   "DS_AG": 0.004,
+   "DS_AL": 0.936,
+   "DS_DG": 0.001,
+   "DS_DL": 0.005,
+   "DP_AG": -48,
+   "DP_AL": 1,
+   "DP_DG": 35,
+   "DP_DL": 0
+  }
+ }
+]
