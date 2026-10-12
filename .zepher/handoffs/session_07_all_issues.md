@@ -27,3 +27,7 @@
 ## Next
 - Remove paralogs from the test set; longer context (train with >1 kb flanks) to raise PR-AUC.
 - Try a learned variant-effect draft (trained on ISM labels) to improve recall at small K.
+
+## Paper (2026-10-12)
+- IEEE conference paper: `docs/paper/ieee/svelto_dna.tex` + `refs.bib` + compiled PDF (4 pages). Build: `cd docs/paper/ieee && tectonic svelto_dna.tex`.
+- TODO before submission: author affiliations/e-mails; re-run timings on AC power (performance profile) and update Table II / Fig. 2.
