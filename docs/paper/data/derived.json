@@ -1,0 +1,423 @@
+{
+ "cost_model": {
+  "candidates": 192,
+  "batching_gain": 1.1953474314850197,
+  "k24": {
+   "passes_ratio": 7.72,
+   "predicted_speedup": 9.22808217106435,
+   "measured_speedup": 9.101374167641314,
+   "rel_error": -0.013730697351216015,
+   "flops_saved": 0.8704663212435233,
+   "measured_vs_batched": 7.613999016448611
+  },
+  "k48": {
+   "passes_ratio": 3.938775510204082,
+   "predicted_speedup": 4.708205189318547,
+   "measured_speedup": 4.68483346829409,
+   "rel_error": -0.004964040453776408,
+   "flops_saved": 0.7461139896373057,
+   "measured_vs_batched": 3.919223269233085
+  },
+  "k96": {
+   "passes_ratio": 1.9896907216494846,
+   "predicted_speedup": 2.3783716935732864,
+   "measured_speedup": 2.375744641324876,
+   "rel_error": -0.0011045591635273633,
+   "flops_saved": 0.49740932642487046,
+   "measured_vs_batched": 1.9874929905303012
+  }
+ },
+ "draft_baselines": {
+  "windows": 48,
+  "mean_high_impact": 32.625,
+  "mean_high_impact_on_site": 39.333333333333336,
+  "mean_high_impact_random": 25.916666666666668,
+  "k12": {
+   "draft_recall": 0.282768799628817,
+   "random_recall": 0.0625,
+   "oracle_recall": 0.5326172968499422,
+   "gain_over_random": 4.524300794061072,
+   "share_of_oracle": 0.5309042746099238,
+   "recall_on_site": 0.2833820164435487,
+   "recall_random_window": 0.2821555828140853
+  },
+  "k24": {
+   "draft_recall": 0.3857117723651514,
+   "random_recall": 0.125,
+   "oracle_recall": 0.7626308535885726,
+   "gain_over_random": 3.0856941789212113,
+   "share_of_oracle": 0.5057647098201942,
+   "recall_on_site": 0.41234873130844063,
+   "recall_random_window": 0.3590748134218622
+  },
+  "k48": {
+   "draft_recall": 0.5966752807962705,
+   "random_recall": 0.25,
+   "oracle_recall": 0.9345444816155588,
+   "gain_over_random": 2.386701123185082,
+   "share_of_oracle": 0.6384664320790707,
+   "recall_on_site": 0.6122232390249437,
+   "recall_random_window": 0.5811273225675974
+  },
+  "k96": {
+   "draft_recall": 0.8734085870629154,
+   "random_recall": 0.5,
+   "oracle_recall": 1.0,
+   "gain_over_random": 1.7468171741258307,
+   "share_of_oracle": 0.8734085870629154,
+   "recall_on_site": 0.8416532745663918,
+   "recall_random_window": 0.9051638995594389
+  }
+ },
+ "case_study": {
+  "variants": [
+   {
+    "gene": "ABAT",
+    "chrom": "chr16",
+    "split": "train",
+    "strand": "+",
+    "component": "DL",
+    "ours": 0.9373917579650879,
+    "spliceai": 0.996,
+    "abs_diff": 0.058608242034912106,
+    "ours_offset": 0,
+    "spliceai_offset": -1,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "ABCC2",
+    "chrom": "chr10",
+    "split": "val",
+    "strand": "+",
+    "component": "DL",
+    "ours": 0.9571185111999512,
+    "spliceai": 0.995,
+    "abs_diff": 0.037881488800048824,
+    "ours_offset": -1,
+    "spliceai_offset": -2,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "ABCG8",
+    "chrom": "chr2",
+    "split": "val",
+    "strand": "+",
+    "component": "AL",
+    "ours": 0.8398541212081909,
+    "spliceai": 0.936,
+    "abs_diff": 0.09614587879180914,
+    "ours_offset": -1,
+    "spliceai_offset": 1,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "ABHD5",
+    "chrom": "chr3",
+    "split": "test",
+    "strand": "+",
+    "component": "AL",
+    "ours": 0.9621729254722595,
+    "spliceai": 0.981,
+    "abs_diff": 0.01882707452774046,
+    "ours_offset": 0,
+    "spliceai_offset": 2,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "AAAS",
+    "chrom": "chr12",
+    "split": "train",
+    "strand": "-",
+    "component": "DL",
+    "ours": 0.9691439270973206,
+    "spliceai": 0.985,
+    "abs_diff": 0.01585607290267943,
+    "ours_offset": 0,
+    "spliceai_offset": 1,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "AAGAB",
+    "chrom": "chr15",
+    "split": "train",
+    "strand": "-",
+    "component": "DL",
+    "ours": 0.9859606027603149,
+    "spliceai": 0.986,
+    "abs_diff": 3.939723968504616e-05,
+    "ours_offset": 0,
+    "spliceai_offset": 1,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "AARS2",
+    "chrom": "chr6",
+    "split": "val",
+    "strand": "-",
+    "component": "DL",
+    "ours": 0.9952126741409302,
+    "spliceai": 0.905,
+    "abs_diff": 0.09021267414093015,
+    "ours_offset": 0,
+    "spliceai_offset": 1,
+    "offset_matches_convention": true,
+    "correct_component": true
+   },
+   {
+    "gene": "ABCA1",
+    "chrom": "chr9",
+    "split": "test",
+    "strand": "-",
+    "component": "DL",
+    "ours": 0.9027428030967712,
+    "spliceai": 0.997,
+    "abs_diff": 0.09425719690322876,
+    "ours_offset": 0,
+    "spliceai_offset": 1,
+    "offset_matches_convention": true,
+    "correct_component": true
+   }
+  ],
+  "all_correct_component": true,
+  "all_offsets_match_convention": true,
+  "mean_ours": 0.9436996653676033,
+  "mean_spliceai": 0.972625,
+  "mean_abs_diff": 0.05147850316762924,
+  "min_ours": 0.8398541212081909
+ },
+ "delta_validation": {
+  "variants": [
+   {
+    "gene": "ABAT",
+    "variant": "chr16-8746099-G-A",
+    "strand": "+",
+    "junction_type": "donor",
+    "ours": {
+     "DG": 0.20100000500679016,
+     "DL": 0.9959660172462463,
+     "AG": 1.700000029813964e-05,
+     "AL": 2.4000000848900527e-05
+    },
+    "published": {
+     "DG": 0.201,
+     "DL": 0.996,
+     "AG": 0.0,
+     "AL": 0.0
+    },
+    "max_abs_diff": 3.398275375365856e-05,
+    "peak_component": "DL",
+    "peak_offset": -1,
+    "published_peak_offset": -1
+   },
+   {
+    "gene": "ABCC2",
+    "variant": "chr10-99808231-T-A",
+    "strand": "+",
+    "junction_type": "donor",
+    "ours": {
+     "DG": 0.2450149804353714,
+     "DL": 0.9946519732475281,
+     "AG": 0.000606000074185431,
+     "AL": 0.0013240000698715448
+    },
+    "published": {
+     "DG": 0.245,
+     "DL": 0.995,
+     "AG": 0.001,
+     "AL": 0.001
+    },
+    "max_abs_diff": 0.000393999925814569,
+    "peak_component": "DL",
+    "peak_offset": -2,
+    "published_peak_offset": -2
+   },
+   {
+    "gene": "ABCG8",
+    "variant": "chr2-43852353-G-C",
+    "strand": "+",
+    "junction_type": "acceptor",
+    "ours": {
+     "DG": 0.0011530000483617187,
+     "DL": 0.0050479997880756855,
+     "AG": 0.004126000218093395,
+     "AL": 0.9364700317382812
+    },
+    "published": {
+     "DG": 0.001,
+     "DL": 0.005,
+     "AG": 0.004,
+     "AL": 0.936
+    },
+    "max_abs_diff": 0.0004700317382811958,
+    "peak_component": "AL",
+    "peak_offset": 1,
+    "published_peak_offset": 1
+   },
+   {
+    "gene": "ABHD5",
+    "variant": "chr3-43702213-A-G",
+    "strand": "+",
+    "junction_type": "acceptor",
+    "ours": {
+     "DG": 3.5000000934815034e-05,
+     "DL": 9.40000027185306e-05,
+     "AG": 0.08216799795627594,
+     "AL": 0.9807500243186951
+    },
+    "published": {
+     "DG": 0.0,
+     "DL": 0.0,
+     "AG": 0.082,
+     "AL": 0.981
+    },
+    "max_abs_diff": 0.00024997568130491477,
+    "peak_component": "AL",
+    "peak_offset": 2,
+    "published_peak_offset": 2
+   },
+   {
+    "gene": "AAAS",
+    "variant": "chr12-53315093-C-T",
+    "strand": "-",
+    "junction_type": "donor",
+    "ours": {
+     "DG": 0.0005790000432170928,
+     "DL": 0.9853389859199524,
+     "AG": 1.3999999282532372e-05,
+     "AL": 0.2823440432548523
+    },
+    "published": {
+     "DG": 0.001,
+     "DL": 0.985,
+     "AG": 0.0,
+     "AL": 0.282
+    },
+    "max_abs_diff": 0.00042099995678290727,
+    "peak_component": "DL",
+    "peak_offset": 1,
+    "published_peak_offset": 1
+   },
+   {
+    "gene": "AAGAB",
+    "variant": "chr15-67231813-C-A",
+    "strand": "-",
+    "junction_type": "donor",
+    "ours": {
+     "DG": 0.04177600145339966,
+     "DL": 0.9856569766998291,
+     "AG": 9.999999974752427e-07,
+     "AL": 0.0002530000056140125
+    },
+    "published": {
+     "DG": 0.042,
+     "DL": 0.986,
+     "AG": 0.0,
+     "AL": 0.0
+    },
+    "max_abs_diff": 0.000343023300170886,
+    "peak_component": "DL",
+    "peak_offset": 1,
+    "published_peak_offset": 1
+   },
+   {
+    "gene": "AARS2",
+    "variant": "chr6-44304180-C-G",
+    "strand": "-",
+    "junction_type": "donor",
+    "ours": {
+     "DG": 0.044836997985839844,
+     "DL": 0.9052119851112366,
+     "AG": 0.00027600000612437725,
+     "AL": 0.0014760000631213188
+    },
+    "published": {
+     "DG": 0.045,
+     "DL": 0.905,
+     "AG": 0.0,
+     "AL": 0.001
+    },
+    "max_abs_diff": 0.0004760000631213188,
+    "peak_component": "DL",
+    "peak_offset": 1,
+    "published_peak_offset": 1
+   },
+   {
+    "gene": "ABCA1",
+    "variant": "chr9-104793170-C-T",
+    "strand": "-",
+    "junction_type": "donor",
+    "ours": {
+     "DG": 0.04380199685692787,
+     "DL": 0.9967150092124939,
+     "AG": 0.04425299912691116,
+     "AL": 6.999999641266186e-06
+    },
+    "published": {
+     "DG": 0.044,
+     "DL": 0.997,
+     "AG": 0.044,
+     "AL": 0.0
+    },
+    "max_abs_diff": 0.00028499078750610085,
+    "peak_component": "DL",
+    "peak_offset": 1,
+    "published_peak_offset": 1
+   }
+  ],
+  "max_abs_diff": 0.0004760000631213188,
+  "all_peaks_match": true
+ },
+ "batch_scaling": {
+  "gpu": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "length": 2164,
+  "repeats": 20,
+  "rows": [
+   {
+    "batch": 1,
+    "median_ms": 11.028173999875435,
+    "ms_per_sequence": 11.028173999875435
+   },
+   {
+    "batch": 2,
+    "median_ms": 17.285902000026,
+    "ms_per_sequence": 8.642951000013
+   },
+   {
+    "batch": 4,
+    "median_ms": 33.05759600004876,
+    "ms_per_sequence": 8.26439900001219
+   },
+   {
+    "batch": 8,
+    "median_ms": 78.52436900009252,
+    "ms_per_sequence": 9.815546125011565
+   },
+   {
+    "batch": 16,
+    "median_ms": 159.92897449996235,
+    "ms_per_sequence": 9.995560906247647
+   },
+   {
+    "batch": 32,
+    "median_ms": 318.83654200009914,
+    "ms_per_sequence": 9.963641937503098
+   },
+   {
+    "batch": 64,
+    "median_ms": 640.5841629999713,
+    "ms_per_sequence": 10.009127546874552
+   }
+  ],
+  "conditions": {
+   "on_ac_power": false,
+   "platform_profile": "low-power"
+  },
+  "note": "one predict() = forward + reverse-complement backbone passes + head, per sequence"
+ }
+}

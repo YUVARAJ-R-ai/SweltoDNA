@@ -51,7 +51,7 @@ def main() -> int:
     ax.set_xlabel("Sequence length (bp)"); ax.set_ylabel("Speedup vs sequential ISM (×)"); ax.set_yscale("log")
     cond = ab.get("conditions") or {}
     where = "" if cond.get("on_ac_power") is None else (", AC power" if cond["on_ac_power"] else ", battery/power-saver")
-    ax.set_title(f"Speculative ISM, {ab['gpu']}{where}; {ab['candidates']} candidates/window", fontsize=8); ax.grid(alpha=.3); ax.legend(fontsize=7)
+    ax.set_title(f"Speculative ISM, {ab['gpu']}{where}\n{ab['candidates']} candidates per window", fontsize=8); ax.grid(alpha=.3); ax.legend(fontsize=7)
     fig.tight_layout(); fig.savefig(out / "figures" / "speedup_vs_length.png", dpi=200); plt.close(fig)
 
     # ---- recall and acceptance vs K (all lengths pooled)

@@ -85,11 +85,21 @@ Over the WebSocket server, a 1 kb edit (reference + mutant, forward + reverse-co
 
 ## 8. Case study: ClinVar pathogenic splice variants
 
-Two ClinVar *Pathogenic* canonical-site SNVs on the + strand from the #5 ground-truth set (`scripts/case_study.py`; figures `figures/case_*.png`). Each is scored by our model and compared with SpliceAI's published scores.
+All eight ClinVar *Pathogenic* canonical-site SNVs from the #5 ground-truth set, both strands (`scripts/case_study.py`; figures `figures/case_*.png`, `figures/case_summary.png`; data `data/case_study.json`). Minus-strand variants are scored in transcript orientation; offsets are reported in genomic orientation like SpliceAI's DP_*.
 
-| Variant | ClinVar | Site | Ours Δ (peak) | SpliceAI Δ (published) | Peak offset, ours / SpliceAI |
-| :--- | :--- | :--- | :---: | :---: | :---: |
-| ABAT `chr16-8746099-G-A` | 635252 | donor | DL 0.937 | DL 0.996 | +0 / -1 |
-| ABCG8 `chr2-43852353-G-C` | 1983599 | acceptor | AL 0.840 | AL 0.936 | -1 / +1 |
+| Gene | Chr | Split | Strand | Comp. | Ours | SpliceAI | Offset ours / SpliceAI |
+| :--- | :-- | :---- | :----: | :---: | :--: | :------: | :--------------------: |
+| ABAT | 16 | train | + | DL | 0.937 | 0.996 | 0 / -1 |
+| ABCC2 | 10 | val | + | DL | 0.957 | 0.995 | -1 / -2 |
+| ABCG8 | 2 | val | + | AL | 0.840 | 0.936 | -1 / +1 |
+| ABHD5 | 3 | test | + | AL | 0.962 | 0.981 | 0 / +2 |
+| AAAS | 12 | train | - | DL | 0.969 | 0.985 | 0 / +1 |
+| AAGAB | 15 | train | - | DL | 0.986 | 0.986 | 0 / +1 |
+| AARS2 | 6 | val | - | DL | 0.995 | 0.905 | 0 / +1 |
+| ABCA1 | 9 | test | - | DL | 0.903 | 0.997 | 0 / +1 |
 
-Both variants are called as loss of the correct site type with high confidence. Our scores are lower than SpliceAI's, consistent with the gap in §6.1. The 1–2 bp peak-offset differences are labelling conventions, not errors: we label the first base of the motif (G of GT, A of AG), while SpliceAI labels the exon-side boundary base. Saliency concentrates on the dinucleotide and its immediate consensus positions (figures).
+All eight are called as loss of the correct site type (mean peak Δ 0.944 vs SpliceAI 0.973). Three lie on **training** chromosomes, so their sites were training labels; only ABHD5 and ABCA1 are on test chromosomes. Every offset pair differs by exactly the labelling convention (we label the first base of the motif; SpliceAI the exon-side boundary base: donor −1, acceptor +2 in transcript orientation).
+
+## 9. Derived statistics
+
+`scripts/paper_stats.py` writes `data/derived.json`: the cost model (speedup ≈ (1+N)/(1+K) × batching gain, within 1.4% of measured), random (K/N) and oracle (min(1, K/|H|)) recall baselines, the Δ-validation table, and (with `--measure-batch`) batch scaling with the power state recorded.
