@@ -34,3 +34,10 @@
 - **Delta Scoring Benchmark Runner (`benchmarks/benchmark_delta.py`):**
   - Profiles full-sequence and point-locus execution times and nucleotide throughput across $L \in \{1024, 2048, 5000, 10000\}$, producing `delta_benchmark_telemetry.json`.
 
+
+- **Real data (`svelto_dna.data.annotation`, `genome`):** canonical protein-coding transcripts from GENCODE (Ensembl_canonical), splice sites on both strands (StrandCoordinateResolver convention), mmap-cached GRCh38 per-chromosome FASTA; `build_splice_windows` makes transcript-oriented 1 kb blocks with 1 kb flanks.
+- **Splice head (`svelto_dna.model.splice_head`):** frozen HyenaDNA-small-32k, features [fwd ; RC-flipped] (512-d) → MLP → 3 classes. The trained head is the model the server and speculative ISM use.
+- **Server (`svelto_dna.serve`):** FastAPI `/ws/splice-session`: hello/mutate/score/reset/scan/ping; edits apply immediately, scoring on one GPU worker with stale-request skipping; synthetic region byte-identical to the web app.
+- **Speculative ISM (`svelto_dna.speculative.verify`):** reference pass → heuristic draft → top-K batched verification; unverified = NaN; measured α, recall, speedup (#4 redesign; no tree attention on an attention-free backbone).
+- **Research (`svelto_dna.research`, `scripts/run_ablation.py`, `research_report.py`, `case_study.py`):** gradient×input saliency without graph retention; K × length ablation → `docs/paper/results_summary.tex` + figures; methodology in `docs/paper/methodology.md`.
+- **Web (`web/`):** Svelto Splice Explorer (spec: `docs/superpowers/specs/2026-10-09-splice-explorer-frontend-design.md`); talks to the server when `NEXT_PUBLIC_SPLICE_WS` is set.
