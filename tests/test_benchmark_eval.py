@@ -180,3 +180,45 @@ class TestSpliceMetrics:
             assert res.returncode == 0
             assert "Loading speculative draft heads from checkpoint" in res.stdout
 
+
+
+class TestEvalHarnessIntegrity:
+    """The eval CLI must score model output only, never ground-truth labels."""
+
+    def _run_eval(self, tmpdir: str, *extra: str):
+        import subprocess
+        import sys
+
+        out = Path(tmpdir) / "telemetry.json"
+        cmd = [
+            sys.executable,
+            "scripts/eval_splice_benchmark.py",
+            "--test-parquet", str(Path(tmpdir) / "missing.parquet"),
+            "--max-samples", "10",
+            "--output-telemetry", str(out),
+            *extra,
+        ]
+        return subprocess.run(cmd, capture_output=True, text=True), out
+
+    def test_untrained_head_is_not_scored_as_perfect(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            res, out = self._run_eval(tmpdir)
+            assert res.returncode == 0, res.stderr
+            report = json.loads(out.read_text())
+
+        # An untrained random head cannot separate splice sites; perfect scores mean label leakage.
+        assert report["mean_roc_auc"] < 0.99
+        assert report["mean_pr_auc"] < 0.5
+
+    def test_mismatched_checkpoint_fails_instead_of_evaluating_random_weights(self) -> None:
+        import torch
+        import torch.nn as nn
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt = Path(tmpdir) / "wrong.pt"
+            torch.save(nn.Linear(256, 3).state_dict(), ckpt)
+            res, _ = self._run_eval(tmpdir, "--draft-heads-checkpoint", str(ckpt))
+
+        assert res.returncode != 0

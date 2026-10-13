@@ -8,9 +8,12 @@ from dataclasses import dataclass, field
 import gzip
 from pathlib import Path
 import random
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
 
 import polars as pl
+
+if TYPE_CHECKING:
+    from svelto_dna.data.annotation import SiteIndex
 
 
 def normalize_chrom(chrom: str) -> str:
@@ -67,6 +70,11 @@ class ClinVarParser:
         """
         raw = str(clnsig).lower().replace("_", " ")
 
+        # Conflicting submissions are never a label, whatever words they contain
+        # ("conflicting classifications of pathogenicity" since 2024, "interpretations" before).
+        if "conflicting" in raw:
+            return False, False, True
+
         is_pathogenic = any(term in raw for term in self.config.pathogenic_terms)
         is_benign = any(term in raw for term in self.config.benign_terms)
 
@@ -80,9 +88,10 @@ class ClinVarParser:
 
         return is_pathogenic, is_benign, False
 
-    def parse_tsv(self, file_path: Union[str, Path]) -> pl.DataFrame:
+    def parse_tsv(self, file_path: Union[str, Path], sites: Optional[Dict[str, "SiteIndex"]] = None) -> pl.DataFrame:
         """
-        Parses a tab-delimited ClinVar variant summary file into a structured Polars DataFrame.
+        Parses a ClinVar variant_summary TSV. Keeps GRCh38 rows only (the file mixes GRCh37 and GRCh38),
+        and computes junction distance from `sites` (see svelto_dna.data.annotation.splice_site_index).
         """
         path = Path(file_path)
         if not path.exists():
@@ -93,14 +102,35 @@ class ClinVarParser:
             path,
             separator="\t",
             infer_schema_length=10000,
-            null_values=["-", ".", "NA", "None", ""],
+            null_values=["-", ".", "NA", "None", "", "na"],
         )
-
+        if "Assembly" in df.columns:
+            df = df.filter(pl.col("Assembly") == "GRCh38")
+        if sites is not None:
+            df = self._annotate(df.rename({k: v for k, v in {"Chromosome": "chrom", "PositionVCF": "pos"}.items() if k in df.columns}), sites)
+        elif "dist_to_junction" not in df.columns:
+            raise ValueError("ClinVar TSV needs a splice-site annotation (sites=...) to compute junction distance; real files carry none.")
         return self.filter_and_format(df)
 
-    def parse_vcf(self, file_path: Union[str, Path]) -> pl.DataFrame:
+    @staticmethod
+    def _annotate(df: pl.DataFrame, sites: Dict[str, "SiteIndex"]) -> pl.DataFrame:
+        """Nearest canonical splice site per variant: junction type, strand, signed genomic distance."""
+        jt, st, dist = [], [], []
+        for chrom, pos in zip(df["chrom"].to_list(), df["pos"].to_list()):
+            hit = sites.get(normalize_chrom(str(chrom)))
+            near = hit.nearest(int(pos) - 1) if hit is not None and pos is not None else None   # VCF is 1-based
+            if near is None:
+                jt.append(None); st.append(None); dist.append(10**9)
+            else:
+                site, kind, strand, _ = near
+                jt.append(kind); st.append(strand); dist.append(int(pos) - 1 - site)
+        return df.with_columns(pl.Series("junction_type", jt, dtype=pl.String), pl.Series("strand", st, dtype=pl.String),
+                               pl.Series("dist_to_junction", dist, dtype=pl.Int64))
+
+    def parse_vcf(self, file_path: Union[str, Path], sites: Optional[Dict[str, "SiteIndex"]] = None) -> pl.DataFrame:
         """
-        Parses a ClinVar VCF file (uncompressed or .gz) into a Polars DataFrame.
+        Parses a ClinVar VCF (plain or .gz). Junction type, strand and distance come from `sites`
+        (canonical transcripts from a GTF). Without `sites`, every record must carry DIST and JUNCTION_TYPE tags.
         """
         path = Path(file_path)
         if not path.exists():
@@ -137,9 +167,13 @@ class ClinVarParser:
                 geneinfo = info_dict.get("GENEINFO", "UNKNOWN:0")
                 gene_id = geneinfo.split(":")[0] if ":" in geneinfo else geneinfo
 
-                # Splice / junction proximity info (if present) or default
-                junction_type = info_dict.get("JUNCTION_TYPE", "donor" if (pos % 2 == 0) else "acceptor")
-                dist = int(info_dict.get("DIST", 0))
+                if sites is None and not ("DIST" in info_dict and "JUNCTION_TYPE" in info_dict):
+                    raise ValueError(
+                        "ClinVar VCF needs a splice-site annotation (sites=...) to compute junction distance; "
+                        f"record {var_id} has no DIST/JUNCTION_TYPE tags (real ClinVar never does)."
+                    )
+                junction_type = info_dict.get("JUNCTION_TYPE")
+                dist = int(info_dict["DIST"]) if "DIST" in info_dict else 0
 
                 records.append({
                     "variant_id": var_id if var_id != "." else f"{chrom}:{pos}:{ref}>{alt}",
@@ -155,6 +189,8 @@ class ClinVarParser:
                 })
 
         raw_df = pl.DataFrame(records)
+        if sites is not None and len(raw_df):
+            raw_df = self._annotate(raw_df.drop(["junction_type", "strand", "dist_to_junction"]), sites)
         return self.filter_and_format(raw_df)
 
     def filter_and_format(self, df: pl.DataFrame) -> pl.DataFrame:

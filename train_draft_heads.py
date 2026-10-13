@@ -79,8 +79,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ignore-index",
         type=int,
-        default=0,
-        help="Token class index to ignore in cross-entropy loss (default: 0 for <PAD>). Set to negative value for none.",
+        default=-1,
+        help="Class index to ignore in cross-entropy loss. Negative (default) ignores nothing; "
+        "splice label 0 is 'Neither' and must be learned; padding is excluded via the loss attention_mask.",
     )
     parser.add_argument(
         "--device",

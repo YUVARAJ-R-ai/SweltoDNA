@@ -24,7 +24,7 @@
   - Implements Top-1, Top-k positional accuracy, ROC-AUC, and PR-AUC (Average Precision) robust to severe class imbalance (>100:1 non-splice vs splice ratio) with guarded single-class safety.
 - **Speculative Draft Heads Module (`svelto_dna.speculative.draft_heads`):**
   - `DraftHead` & `SpeculativeDraftHeads`: $K=3$ or $K=4$ residual projection MLP heads attached to penultimate representations. Parameter overhead is strictly controlled ($2.87\%$ for $K=3$, $3.83\%$ for $K=4$).
-  - `SpeculativeDraftLoss`: Discounted multi-target cross-entropy loss ($\lambda_k = 0.85^{k-1}$) with `ignore_index = 0` padding protection.
+  - `SpeculativeDraftLoss`: Discounted multi-target cross-entropy loss ($\lambda_k = 0.85^{k-1}$) with `ignore_index = -100` by default (splice class 0 = Neither is learned; padding is excluded via attention mask).
   - Exposes `predict_candidates(top_k)` and `get_candidate_probabilities(temperature)` to directly construct tree branches for Issue #4 DAG verification.
   - `DraftHeadTrainer`: Verifies backbone parameters remain strictly frozen (`p.grad is None`) while draft heads optimize.
 - **Vectorized Splice Disruption & Delta Score Calculator (`svelto_dna.splice.delta`):**
@@ -34,3 +34,10 @@
 - **Delta Scoring Benchmark Runner (`benchmarks/benchmark_delta.py`):**
   - Profiles full-sequence and point-locus execution times and nucleotide throughput across $L \in \{1024, 2048, 5000, 10000\}$, producing `delta_benchmark_telemetry.json`.
 
+
+- **Real data (`svelto_dna.data.annotation`, `genome`):** canonical protein-coding transcripts from GENCODE (Ensembl_canonical), splice sites on both strands (StrandCoordinateResolver convention), mmap-cached GRCh38 per-chromosome FASTA; `build_splice_windows` makes transcript-oriented 1 kb blocks with 1 kb flanks.
+- **Splice head (`svelto_dna.model.splice_head`):** frozen HyenaDNA-small-32k, features [fwd ; RC-flipped] (512-d) → MLP → 3 classes. The trained head is the model the server and speculative ISM use.
+- **Server (`svelto_dna.serve`):** FastAPI `/ws/splice-session`: hello/mutate/score/reset/scan/ping; edits apply immediately, scoring on one GPU worker with stale-request skipping; synthetic region byte-identical to the web app.
+- **Speculative ISM (`svelto_dna.speculative.verify`):** reference pass → heuristic draft → top-K batched verification; unverified = NaN; measured α, recall, speedup (#4 redesign; no tree attention on an attention-free backbone).
+- **Research (`svelto_dna.research`, `scripts/run_ablation.py`, `research_report.py`, `case_study.py`):** gradient×input saliency without graph retention; K × length ablation → `docs/paper/results_summary.tex` + figures; methodology in `docs/paper/methodology.md`.
+- **Web (`web/`):** Svelto Splice Explorer (spec: `docs/superpowers/specs/2026-10-09-splice-explorer-frontend-design.md`); talks to the server when `NEXT_PUBLIC_SPLICE_WS` is set.

@@ -1,0 +1,698 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{arrows.meta,positioning,fit}
+\graphicspath{{../figures/}}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{definition}{Definition}
+
+\definecolor{cblue}{HTML}{0A84FF}
+\definecolor{cred}{HTML}{FF453A}
+\definecolor{cgray}{HTML}{8E8E93}
+\definecolor{corange}{HTML}{FF9F0A}
+
+\begin{document}
+
+\title{Svelto-DNA: Interactive Splice-Disruption Analysis on a Frozen Genomic Foundation Model with Speculative In-Silico Mutagenesis}
+
+% Affiliations and e-mail addresses: fill in before submission.
+\author{\IEEEauthorblockN{Derrick Rajkumar}
+\and
+\IEEEauthorblockN{Yuvaraj R.}}
+
+\maketitle
+
+\begin{abstract}
+Splice-altering variants are a frequent and under-diagnosed cause of genetic disease. Deep sequence models can score them, but exhaustive in-silico mutagenesis (ISM) of a region needs one forward pass per candidate substitution, which makes interactive exploration slow. We present Svelto-DNA, an open system that pairs a frozen HyenaDNA backbone with a small trained splice-site head, a validated vectorized splice-disruption ($\Delta$) calculator, a WebSocket scoring service and a browser-based explorer. Because HyenaDNA is causal, the head reads forward and reverse-complement features, so every position sees both flanks. On held-out chromosomes (62.7\,M positions, 112{,}019 annotated sites) the model reaches donor/acceptor PR-AUC 0.630/0.552 and ROC-AUC 0.9989/0.9984 while training only 0.2\,M parameters for 14 minutes on a laptop GPU. Fed SpliceAI's own probability tracks, our $\Delta$ calculator reproduces published SpliceAI scores for eight ClinVar pathogenic variants within their 3-decimal rounding, and our own model calls the correct site loss for all eight (mean peak $\Delta$ 0.944 versus SpliceAI's 0.973). To accelerate ISM we study a speculative draft-and-verify scheme: one reference pass drafts which candidates could matter and only the top-$K$ are verified exactly in batched passes. We derive a cost model that predicts the measured speedups within 1.4\% and show that, on a laptop GPU, exact batching gives only $1.2\times$; every larger speedup comes from verifying fewer candidates and costs recall ($2.4\times$ at 0.83 recall of high-impact variants, $9.1\times$ at 0.31). The heuristic draft is $1.7$--$4.5\times$ better than random selection but reaches only 51--87\% of an oracle. We report these trade-offs, and two negative results, so that speculative claims for genomic models can be judged against recall rather than speed alone.
+\end{abstract}
+
+\begin{IEEEkeywords}
+RNA splicing, variant effect prediction, genomic foundation models, HyenaDNA, in-silico mutagenesis, speculative decoding, algorithm analysis, ClinVar
+\end{IEEEkeywords}
+
+%=====================================================================
+\section{Introduction}
+%=====================================================================
+Pre-mRNA splicing removes introns and joins exons, and it is directed largely by short sequence signals. Almost every intron begins with GT at its 5$'$ end (the \emph{donor} site) and ends with AG at its 3$'$ end (the \emph{acceptor} site), and both dinucleotides sit inside longer, degenerate consensus motifs that are complemented by a branch point, a polypyrimidine tract and exonic and intronic regulatory elements~\cite{lee2015splicing,wang2008splicingcode}. A single-nucleotide variant (SNV) that destroys one of these signals, or creates a cryptic one, can cause exon skipping, intron retention or a shifted exon boundary, and therefore a truncated or altered protein. Such variants are a recurring cause of inherited disease~\cite{scotti2016missplicing,xiong2015splicingcode}. A classic example is the \textit{MAPT} gene, where mutations at the exon~10 donor change the ratio of tau isoforms and cause frontotemporal dementia with parkinsonism (FTDP-17)~\cite{hutton1998ftdp17}.
+
+Interpreting splice variants is hard in practice. Variants at the canonical GT/AG dinucleotides are usually clear, but most variants lie elsewhere, and their effect depends on context that a human reviewer cannot judge by eye. Clinical guidelines therefore admit computational evidence~\cite{richards2015acmg}, and recent recommendations explicitly calibrate splice predictors for this purpose~\cite{walker2023clingen}. Deep models now predict splicing from sequence with high accuracy: SpliceAI~\cite{jaganathan2019spliceai} and Pangolin~\cite{zeng2022pangolin} score a variant by the change ($\Delta$) in predicted site probabilities within a local window. In parallel, genomic foundation models such as DNABERT~\cite{ji2021dnabert,zhou2024dnabert2}, the Nucleotide Transformer~\cite{dallatorre2025nt} and HyenaDNA~\cite{nguyen2023hyenadna} learn general-purpose sequence representations that can be adapted to downstream tasks with little labelled data.
+
+Using these models \emph{interactively} remains slow. A clinician or researcher who wants to know which positions in a region are fragile must perform in-silico saturation mutagenesis (ISM)~\cite{alipanahi2015deepbind}: every alternative base at every position, each scored with its own forward pass. For $n$ positions that is $3n$ passes over a sequence that itself grows with $n$, so the cost is super-linear in the region size. Incremental methods such as fastISM~\cite{nair2022fastism} exploit the local receptive fields of convolutional networks, but long-convolution models such as HyenaDNA mix information across the whole sequence through FFT convolutions, so a single-base change alters every downstream state and the incremental trick does not apply.
+
+Large language models faced a similar problem with autoregressive decoding, and speculative decoding~\cite{leviathan2023speculative,chen2023speculative,stern2018blockwise} and multi-head drafting~\cite{cai2024medusa} reduce latency by drafting cheaply and verifying in parallel. We ask whether the same idea helps variant scanning. A cheap draft ranks candidate variants by how likely they are to matter, and the expensive model verifies only the top-$K$. The answer turns out to be more nuanced than in language modelling. Token-level speculative decoding is lossless because rejected drafts are regenerated, but in variant scanning an unverified candidate is simply unknown, so every speedup must be weighed against the high-impact variants it misses.
+
+To answer the question honestly we built a complete system and measured it end to end. Our contributions are:
+\begin{itemize}
+  \item an open data pipeline from GENCODE, GRCh38 and ClinVar to chromosome-disjoint splice-site datasets, including the discovery and repair of two silent labelling errors (Section~\ref{sec:data});
+  \item a splice-site head on a \emph{frozen} HyenaDNA backbone that concatenates forward and reverse-complement features to compensate for the backbone's causality, which we verify empirically (Section~\ref{sec:model});
+  \item a vectorized $\Delta$ calculator validated against \emph{published} SpliceAI scores for eight ClinVar pathogenic variants (Section~\ref{sec:delta});
+  \item speculative ISM with exact batched verification, a complexity analysis, a cost model that predicts measured speedups within 1.4\%, and recall bounds for random and oracle drafts (Sections~\ref{sec:spec} and~\ref{sec:complexity});
+  \item an interactive WebSocket service and browser explorer with sub-15\,ms edit latency (Section~\ref{sec:system});
+  \item an evaluation that reports recall next to every speedup, two negative results, and the measurement conditions under which every timing was taken (Sections~\ref{sec:results} and~\ref{sec:discussion}).
+\end{itemize}
+
+The rest of the paper is organised as follows. Section~\ref{sec:background} gives background and Section~\ref{sec:related} discusses related work. Section~\ref{sec:problem} formalises the problem. Sections~\ref{sec:data}--\ref{sec:system} describe the data, model, $\Delta$ calculator, speculative ISM, its complexity and the interactive system. Section~\ref{sec:setup} gives the experimental setup, Section~\ref{sec:results} the results, and Sections~\ref{sec:discussion} and~\ref{sec:limits} the discussion and limitations.
+
+%=====================================================================
+\section{Background}\label{sec:background}
+%=====================================================================
+\subsection{Splice sites and splice-disrupting variants}
+In the human genome the donor consensus spans roughly the last three exonic and first six intronic bases (MAG$|$GTRAGT, where $|$ marks the exon--intron boundary), and the acceptor consensus consists of a polypyrimidine tract followed by YAG$|$G~\cite{lee2015splicing}. Only the GT and AG dinucleotides are nearly invariant, and the remaining positions contribute graded information~\cite{yeo2004maxent}. Variants act in four ways that map directly onto the $\Delta$ components used later: they can weaken an existing donor (\emph{donor loss}) or acceptor (\emph{acceptor loss}), or strengthen a cryptic one (\emph{donor gain}, \emph{acceptor gain}).
+
+\subsection{The SpliceAI $\Delta$ score}
+SpliceAI predicts, for every position, the probability that it is a donor, an acceptor or neither. A variant is scored by running the model on the reference and the mutant sequence and taking, within a window of $\pm W$ bases around the variant, the largest increase (gain) and decrease (loss) of donor and acceptor probability; the published scores use $W=50$~\cite{jaganathan2019spliceai}. The four scores lie in $[0,1]$, and cut-offs of 0.2, 0.5 and 0.8 are commonly used as high-recall, recommended and high-precision thresholds~\cite{jaganathan2019spliceai,walker2023clingen}. We use exactly this definition (Section~\ref{sec:delta}) so that our scores are comparable with published ones.
+
+\subsection{Long-convolution genomic foundation models}
+Transformers~\cite{vaswani2017attention} scale quadratically with sequence length, which limits the context of attention-based DNA models such as DNABERT~\cite{ji2021dnabert} and leads them to use $k$-mer or byte-pair tokens~\cite{zhou2024dnabert2,dallatorre2025nt}. The Hyena operator~\cite{poli2023hyena} replaces attention with data-controlled gating and implicitly parameterised long convolutions evaluated with the FFT~\cite{cooley1965fft}, so a layer costs $O(L\log L)$ in the sequence length $L$. HyenaDNA~\cite{nguyen2023hyenadna} applies this to the human genome with single-nucleotide tokens and contexts of up to one million bases. Its convolutions are \emph{causal}: the state at position $t$ depends only on bases at positions $\le t$. This suits next-token pre-training but is a mismatch for splice prediction, where a donor is defined as much by the intron downstream as by the exon upstream. State-space models such as Mamba~\cite{gu2023mamba} share the same causality, and Caduceus~\cite{schiff2024caduceus} addresses it with bidirectional, reverse-complement-equivariant layers. We take the simpler route of running a frozen causal model on both strands (Section~\ref{sec:model}).
+
+\subsection{Speculative inference}
+Speculative decoding~\cite{leviathan2023speculative,chen2023speculative} uses a small draft model to propose several tokens and the large target model to verify them in one parallel pass; accepted tokens are kept and the first rejected one is resampled, so the output distribution is unchanged. Blockwise parallel decoding~\cite{stern2018blockwise} and Medusa~\cite{cai2024medusa} draft with extra prediction heads instead of a separate model, and Medusa verifies a tree of candidates with a tree-shaped attention mask. Speedups come from the fact that verification is parallel while generation is sequential, and the key quantity is the \emph{acceptance rate} $\alpha$ of drafted tokens. Section~\ref{sec:spec} adapts these ideas to variant scanning, where the structure of the problem is different.
+
+%=====================================================================
+\section{Related Work}\label{sec:related}
+%=====================================================================
+\textbf{Splice prediction.} Early tools scored short motifs: MaxEntScan~\cite{yeo2004maxent} models 9-mer donors and 23-mer acceptors with maximum-entropy distributions. The splicing code of Xiong et al.~\cite{xiong2015splicingcode} predicted exon inclusion from sequence features with deep networks, and MMSplice~\cite{cheng2019mmsplice} combined modules for exon, intron and splice-site regions. SpliceAI~\cite{jaganathan2019spliceai} trained a deep dilated residual CNN on 10\,kb of context end to end and introduced the $\Delta$ score, and Pangolin~\cite{zeng2022pangolin} extended this to tissue-specific splice-site usage across species. Broad's SpliceAI-lookup~\cite{spliceailookup} serves SpliceAI and Pangolin scores on demand, which we use as ground truth. General variant-effect scores such as CADD~\cite{kircher2014cadd} integrate many annotations but are not specific to splicing. Our model is weaker than SpliceAI, which we treat as a reference rather than a competitor; our aim is a system that is fast enough to explore interactively and honest about its trade-offs.
+
+\textbf{Genomic foundation models.} DNABERT~\cite{ji2021dnabert} pre-trained a BERT encoder on overlapping 6-mers, DNABERT-2~\cite{zhou2024dnabert2} switched to byte-pair encoding and multi-species data, and the Nucleotide Transformer~\cite{dallatorre2025nt} scaled attention-based models to billions of parameters across many genomes. HyenaDNA~\cite{nguyen2023hyenadna} trades attention for long convolutions and single-nucleotide resolution, and Caduceus~\cite{schiff2024caduceus} adds bidirectionality and reverse-complement equivariance on top of Mamba~\cite{gu2023mamba}. Enformer~\cite{avsec2021enformer} combines convolutions and attention for expression prediction. These models are usually evaluated by fine-tuning on classification benchmarks; we instead use a frozen backbone inside an interactive tool and measure the latency that results.
+
+\textbf{Accelerating in-silico mutagenesis.} ISM is the standard way to read variant effects out of a sequence model~\cite{alipanahi2015deepbind}. fastISM~\cite{nair2022fastism} speeds it up for CNNs by recomputing only the positions inside a variant's receptive field. Gradient-based attributions~\cite{simonyan2013saliency,shrikumar2017deeplift,sundararajan2017ig} approximate ISM with one backward pass but are first-order and can miss strongly non-linear effects, such as destroying a GT. FFT-based long convolutions can be accelerated at the kernel level~\cite{fu2024flashfftconv}, which is complementary to our work. To our knowledge, speculative draft-and-verify has not been studied for ISM.
+
+\textbf{Speculative inference.} Beyond the work above~\cite{leviathan2023speculative,chen2023speculative,stern2018blockwise,cai2024medusa}, the common premise is that verifying many items in parallel costs little more than processing one. We show that for small genomic models on consumer GPUs this premise is weak, because a batched pass is barely cheaper per sequence than a single one.
+
+\textbf{Interactive genomics tools.} Genome browsers such as UCSC~\cite{kent2002ucsc} display precomputed tracks, and SpliceAI-lookup~\cite{spliceailookup} scores single variants on request. We are not aware of a tool that rescores a region's splice landscape live while the user edits bases, which is what our WebSocket service provides.
+
+%=====================================================================
+\section{Problem Formulation}\label{sec:problem}
+%=====================================================================
+Let $x\in\{\mathrm{A,C,G,T}\}^L$ be a DNA window in transcript orientation and let $f$ be a model that maps it to per-position probabilities $p=f(x)\in[0,1]^{L\times 3}$ over the classes \{neither, donor, acceptor\}. A \emph{candidate} $c=(v,b)$ substitutes base $b\neq x_v$ at position $v$; we write $x^{c}$ for the mutated sequence.
+
+\begin{definition}[Splice disruption]
+The disruption of $c$ is $\Delta(c)=\max_{k\in\{\mathrm{d,a}\}}\max_{|j-v|\le W}|f(x^c)_{j,k}-f(x)_{j,k}|$, the largest change in donor or acceptor probability within $\pm W$ bases of the variant. It equals the maximum of the four SpliceAI components in Section~\ref{sec:delta}.
+\end{definition}
+
+\begin{definition}[Saturation scan]
+For a region $R=[s,e)$ of $n=e-s$ positions the candidate set is $C=\{(v,b): v\in R,\ b\neq x_v\}$, with $N=|C|=3n$. Given a threshold $\tau$, the \emph{high-impact set} is $H=\{c\in C:\Delta(c)\ge\tau\}$. Exhaustive ISM computes $\Delta(c)$ for all $c\in C$.
+\end{definition}
+
+A speculative scan with budget $K$ computes $\Delta$ exactly for a subset $S\subseteq C$ with $|S|=K$, chosen without evaluating $f$ on any mutant, and reports the rest as unknown. Its quality is measured by
+\begin{equation}
+\mathrm{recall}=\frac{|S\cap H|}{|H|},\qquad \alpha=\frac{|S\cap H|}{|S|},
+\end{equation}
+and its cost by wall-clock time and the fraction of forward passes saved, $1-(1+K)/(1+N)$, where the extra pass is the reference. The goal is to maximise recall for a given time budget, or to minimise time for a required recall. Throughout we use $W=50$ and $\tau=0.2$, SpliceAI's high-recall cut-off.
+
+%=====================================================================
+\section{Data}\label{sec:data}
+%=====================================================================
+\subsection{Annotation and sequence}
+We use the GENCODE v46 basic annotation~\cite{frankish2023gencode} and keep one canonical protein-coding transcript per gene, identified by the \texttt{Ensembl\_canonical} tag. This gives 19{,}120 transcripts on chr1--22 with 366{,}000 splice sites. Donor and acceptor coordinates are derived from exon boundaries, and sequence comes from the Ensembl GRCh38 primary assembly~\cite{harrison2024ensembl}. Each chromosome is decompressed once into an uppercase single-line cache file and read through memory mapping, so fetching a window is a direct slice that needs no parsing.
+
+\subsection{Training windows}
+Algorithm~\ref{alg:windows} shows how windows are built. Each transcript's span is tiled into consecutive 1\,kb \emph{blocks} in transcript (5$'\!\to\!$3$'$) orientation, and each block is extended by 1\,kb of flank on both sides, giving 3\,kb of input of which only the central 1\,kb is labelled. Minus-strand transcripts are reverse-complemented, so the model always sees the sense strand. A site is labelled on the first base of its dinucleotide: the G of GT for donors and the A of AG for acceptors. All blocks that contain a site are kept, plus one randomly chosen site-free block per transcript (seed 42), so positives are enriched relative to the genome while the model still sees intronic background.
+
+\begin{algorithm}[t]
+\caption{Transcript-oriented window construction}\label{alg:windows}
+\begin{algorithmic}[1]
+\Require transcripts $\mathcal{T}$, genome $G$, block $B{=}1000$, flank $F{=}1000$
+\For{$t\in\mathcal{T}$}
+  \State $Q\gets$ oriented first-base positions of all sites of $t$
+  \State $\mathcal{B}\gets\{t.\mathrm{start},\,t.\mathrm{start}{+}B,\dots\}$ \Comment{block starts}
+  \State keep each $b\in\mathcal{B}$ with $Q\cap[b,b{+}B)\neq\emptyset$
+  \State keep one random site-free block
+  \For{each kept block $b$}
+    \State $y\gets$ labels on $[b,b{+}B)$ from $Q$ \Comment{0/1/2}
+    \State $x\gets G.\mathrm{fetch}(t.\mathrm{chrom},\,b{-}F,\,b{+}B{+}F)$
+    \If{$t.\mathrm{strand}={-}$} $x\gets\mathrm{rc}(x)$;\ $y\gets\mathrm{reverse}(y)$ \EndIf
+    \State emit $(x,y)$
+  \EndFor
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Chromosome splits}
+Splits are by chromosome, with no chromosome or gene shared between them (Table~\ref{tab:data}). We train on chr11--22, select checkpoints on chr2, 4, 6, 8 and 10, and test on chr1, 3, 5, 7 and 9, the test chromosomes used by SpliceAI. Paralogs are not removed, which we list as a limitation. The test set contains 62{,}739 windows, i.e.\ 62.7\,M labelled positions with 56{,}008 donors and 56{,}011 acceptors, a non-site to site ratio of 559:1.
+
+\begin{table}[t]
+\centering
+\caption{Dataset statistics (GENCODE v46 canonical protein-coding transcripts, GRCh38)}
+\label{tab:data}
+\begin{tabular}{lrrr}
+\toprule
+Split & Chromosomes & Windows & Labelled positions \\
+\midrule
+Train & 11--22 & 86{,}811 & 86.8\,M \\
+Validation & 2, 4, 6, 8, 10 & 51{,}657 & 51.7\,M \\
+Test & 1, 3, 5, 7, 9 & 62{,}739 & 62.7\,M \\
+\midrule
+\multicolumn{4}{l}{19{,}120 transcripts, 366{,}000 sites} \\
+\multicolumn{4}{l}{window: 1\,kb labelled block + 1\,kb flank on each side} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ClinVar variants and two silent errors}
+From the ClinVar GRCh38 release~\cite{landrum2018clinvar} we keep SNVs within $\pm$50\,bp of an annotated splice site. Distances are computed with a per-chromosome array of all site positions, sorted once, and a binary search per variant: $O(S\log S)$ to build for $S$ sites and $O(\log S)$ per query, so annotating 2.1\,M variants takes seconds. Variants are labelled by clinical significance (Table~\ref{tab:clinvar}).
+
+Two silent errors were found while building this pipeline, and both would have corrupted downstream evaluation without raising an error. First, the original parser read the distance to the nearest exon junction from a field that real ClinVar records do not have, and defaulted it to zero. Every SNV in ClinVar therefore passed the $\pm$50\,bp filter. Distances are now computed from the annotation as described above. Second, recent ClinVar releases describe disputed variants as ``Conflicting classifications of pathogenicity''. That text contains the word ``pathogenic'', and a substring match labelled 86{,}949 conflicting variants as pathogenic. Conflicting submissions are now never used as labels, whatever words they contain, and a regression test covers the exact ClinVar wording. Both errors are of a kind that aggregate metrics hide, which is why we report them.
+
+\begin{table}[t]
+\centering
+\caption{ClinVar GRCh38 SNVs within $\pm$50\,bp of a canonical splice site}
+\label{tab:clinvar}
+\begin{tabular}{lr}
+\toprule
+Label & Variants \\
+\midrule
+Pathogenic / likely pathogenic & 119{,}787 \\
+Benign / likely benign & 732{,}647 \\
+Held out (uncertain or conflicting) & 1{,}266{,}142 \\
+\midrule
+Total & 2{,}118{,}576 \\
+\midrule
+Conflicting, previously mislabelled pathogenic & 86{,}949 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%=====================================================================
+\section{Model}\label{sec:model}
+%=====================================================================
+\subsection{Frozen backbone}
+The backbone is HyenaDNA-small-32k (\texttt{LongSafari/hyenadna-small-32k-seqlen-hf}): 4 Hyena layers with hidden size $D=256$ and 3{,}277{,}568 parameters, pre-trained on the human reference genome with a 32\,k context. We load it with its own single-nucleotide vocabulary and without special tokens, which would otherwise shift every output by one position, and we keep all of its parameters frozen. The checkpoint's remote code was audited before use. Weights stay in fp32 and inference runs under fp16 autocast~\cite{micikevicius2018mixed}, which matches fp32 hidden states with cosine similarity 0.99998 on a 10\,kb window. Keeping the stored weights in fp32 preserves the accuracy of the FFT convolution filters.
+
+\subsection{Reverse-complement fusion}
+HyenaDNA is causal, so its state $H(x)_t$ at position $t$ summarises only $x_{1..t}$. A donor at $t$, however, is defined by the intron downstream of it. We therefore run the backbone a second time on the reverse complement $\mathrm{rc}(x)$, in which the downstream sequence comes \emph{first}, and flip the result back into forward coordinates:
+\begin{equation}
+h_t = \big[\, H(x)_t \;;\; H(\mathrm{rc}(x))_{L-1-t} \,\big] \in \mathbb{R}^{2D}.
+\label{eq:rc}
+\end{equation}
+The first half sees the upstream flank and the second half sees the downstream flank on the opposite strand, so together they cover both. For batches of unequal length the flip is done within each sequence's own length. We verified this directly. After a single-base edit 50\,bp downstream of position $t$, the forward half of $h_t$ changes only by fp16 FFT round-off ($\sim3\times10^{-3}$), while the reverse-complement half changes 80--300$\times$ more; a unit test asserts a ratio of at least 20.
+
+\subsection{Splice head}
+The head maps $h_t$ to class logits with a two-hidden-layer perceptron: LayerNorm($2D$), Linear($2D\!\to\!256$), GELU, Linear($256\!\to\!256$), GELU, Linear($256\!\to\!3$). It has 198{,}915 parameters, 6.1\% of the backbone, and is applied independently at every position, so it adds no sequence mixing beyond what the backbone provides. Probabilities are $p_t=\mathrm{softmax}(f(h_t))$.
+
+\subsection{Training}
+Only the head is trained. Backbone features are computed without gradients, so training stores no backbone activations. The loss is class-weighted cross-entropy over the labelled 1\,kb block of each window,
+\begin{equation}
+\mathcal{L}=-\frac{1}{\sum_t w_{y_t}}\sum_{t} w_{y_t}\log p_{t,y_t},\qquad w_0=1,\ w_1=w_2=20,
+\end{equation}
+which counteracts the 559:1 imbalance without resampling. We use AdamW~\cite{loshchilov2019adamw} with learning rate $10^{-3}$ and weight decay $10^{-2}$, a one-cycle schedule~\cite{smith2019superconvergence}, and 4{,}000 steps of 16 randomly sampled training windows, i.e.\ about 64{,}000 window presentations (0.74 epochs). Every 500 steps we evaluate on a fixed sample of 1{,}500 validation windows and keep the checkpoint with the best mean donor/acceptor PR-AUC. Training takes 14 minutes on the laptop GPU described in Section~\ref{sec:setup}. Table~\ref{tab:hparams} lists all settings and Fig.~\ref{fig:training} shows the validation curve.
+
+\begin{table}[t]
+\centering
+\caption{Model and training settings}
+\label{tab:hparams}
+\begin{tabular}{ll}
+\toprule
+Backbone & HyenaDNA-small-32k, frozen, 3.28\,M params \\
+Precision & fp32 weights, fp16 autocast \\
+Features & $[h^{\rightarrow};h^{\leftarrow}]$, $2D=512$ \\
+Head & LN, 512$\to$256$\to$256$\to$3, GELU; 0.20\,M \\
+Loss & weighted cross-entropy, site weight 20 \\
+Optimiser & AdamW, lr $10^{-3}$, weight decay $10^{-2}$ \\
+Schedule & one-cycle, 4{,}000 steps, batch 16 \\
+Selection & best mean val.\ PR-AUC (1{,}500 windows) \\
+Seed / time & 42 / 14.0 min \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\columnwidth, height=4.6cm, xlabel={training step}, ylabel={validation metric},
+  xmin=300, xmax=4200, ymin=0.38, ymax=0.64, grid=major, grid style={gray!20},
+  legend style={font=\scriptsize, at={(0.98,0.03)}, anchor=south east}, tick label style={font=\scriptsize}, label style={font=\small},
+  scaled x ticks=false, xticklabel style={/pgf/number format/1000 sep={,}}]
+\addplot[cblue, thick, mark=*, mark size=1.4pt] coordinates {(500,0.4050)(1000,0.4795)(1500,0.5120)(2000,0.5318)(2500,0.5555)(3000,0.5632)(3500,0.5741)(4000,0.5742)};
+\addlegendentry{mean PR-AUC}
+\addplot[cred, thick, mark=square*, mark size=1.3pt] coordinates {(500,0.4681)(1000,0.5219)(1500,0.5350)(2000,0.5611)(2500,0.5772)(3000,0.5919)(3500,0.6034)(4000,0.6042)};
+\addlegendentry{donor top-1}
+\addplot[corange, thick, mark=triangle*, mark size=1.6pt] coordinates {(500,0.4232)(1000,0.4591)(1500,0.4965)(2000,0.5058)(2500,0.5246)(3000,0.5152)(3500,0.5292)(4000,0.5246)};
+\addlegendentry{acceptor top-1}
+\end{axis}
+\end{tikzpicture}
+\caption{Validation metrics during head training (1{,}500 fixed validation windows, every 500 steps). Mean ROC-AUC rises from 0.9969 to 0.9985 over the same period; PR-AUC has nearly plateaued by step 3{,}500.}
+\label{fig:training}
+\end{figure}
+
+%=====================================================================
+\section{Variant Effect and Its Validation}\label{sec:delta}
+%=====================================================================
+\subsection{Definition}
+For a variant at position $v$ with reference and mutant probability tracks $p^{\mathrm{ref}},p^{\mathrm{mut}}$ and window $W=50$ we follow SpliceAI:
+\begin{align}
+\Delta_{\mathrm{DG}} &= \max_{|j-v|\le W} \big(p^{\mathrm{mut}}_{j,\mathrm{d}} - p^{\mathrm{ref}}_{j,\mathrm{d}}\big),\\
+\Delta_{\mathrm{DL}} &= \max_{|j-v|\le W} \big(p^{\mathrm{ref}}_{j,\mathrm{d}} - p^{\mathrm{mut}}_{j,\mathrm{d}}\big),
+\end{align}
+with $\Delta_{\mathrm{AG}},\Delta_{\mathrm{AL}}$ defined analogously on the acceptor channel, and $\Delta=\max(\Delta_{\mathrm{DG}},\Delta_{\mathrm{DL}},\Delta_{\mathrm{AG}},\Delta_{\mathrm{AL}})$. Each component also has a \emph{peak position}, the offset $j-v$ at which its maximum is attained.
+
+\subsection{Vectorized computation}
+Stacking the four signed differences $\pm(p^{\mathrm{mut}}-p^{\mathrm{ref}})$ on the donor and acceptor channels gives a $4\times L$ tensor. A single 1D max-pool with kernel $2W+1$, stride 1 and padding $W$ then yields all four components at \emph{every} position at once, so the same code scores one variant, a batch of variants, or the full landscape displayed in the browser. A naive loop costs $O(LW)$ comparisons per channel, and a monotone-deque sliding-window maximum would cost $O(L)$. The pooling kernel performs $O(LW)$ work but in parallel, and for our sizes it is bound by kernel-launch overhead rather than arithmetic: a 10\,kb window takes a median of 0.21\,ms on the GPU, the same as a 1\,kb window, and 0.55\,ms on the CPU.
+
+\subsection{Validation against published SpliceAI scores}
+An implementation of $\Delta$ can be wrong in subtle ways, for instance with off-by-one windows, swapped gain and loss, or strand handling. To test ours independently of our model, we ran the official SpliceAI five-model ensemble on reference and mutant 11\,kb windows for eight ClinVar \emph{pathogenic} SNVs at canonical splice dinucleotides, four per strand, covering donors and acceptors. We fed its full $\pm$50\,bp probability tracks to our calculator and compared the result with the scores and positions \emph{published} by SpliceAI-lookup~\cite{spliceailookup}. Table~\ref{tab:deltaval} shows the result. All 32 component scores agree within 0.000476, inside the $\pm$0.0005 implied by the 3-decimal rounding of the published values, and all eight peak positions match exactly. Because the published scores are rounded, closer agreement cannot be demonstrated.
+
+\begin{table}[t]
+\centering
+\caption{$\Delta$ calculator on SpliceAI tracks vs.\ published SpliceAI scores. ``Max dev.'' is over all four components; offsets are genomic.}
+\label{tab:deltaval}
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{llcccrc}
+\toprule
+Gene & Str. & Peak & Ours & Published & Max dev. & Offset \\
+\midrule
+\textit{ABAT} & + & DL & 0.9960 & 0.996 & 0.000034 & $-1$ \checkmark \\
+\textit{ABCC2} & + & DL & 0.9947 & 0.995 & 0.000394 & $-2$ \checkmark \\
+\textit{ABCG8} & + & AL & 0.9365 & 0.936 & 0.000470 & $+1$ \checkmark \\
+\textit{ABHD5} & + & AL & 0.9808 & 0.981 & 0.000250 & $+2$ \checkmark \\
+\textit{AAAS} & $-$ & DL & 0.9853 & 0.985 & 0.000421 & $+1$ \checkmark \\
+\textit{AAGAB} & $-$ & DL & 0.9857 & 0.986 & 0.000343 & $+1$ \checkmark \\
+\textit{AARS2} & $-$ & DL & 0.9052 & 0.905 & 0.000476 & $+1$ \checkmark \\
+\textit{ABCA1} & $-$ & DL & 0.9967 & 0.997 & 0.000285 & $+1$ \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%=====================================================================
+\section{Speculative In-Silico Mutagenesis}\label{sec:spec}
+%=====================================================================
+\subsection{Why tree verification does not apply}
+Medusa-style verification~\cite{cai2024medusa} checks a tree of drafted continuations in one pass by giving each branch its own attention mask. HyenaDNA has no attention, so there is no mask through which branches could share a pass; every distinct sequence needs its own row in the batch. Variant scanning also has a different structure from decoding: candidates are not sequential, each is an independent sequence, and there is nothing to ``accept'' in the language-model sense. We therefore move speculation from the token level to the level of whole variants: draft which variants matter, then verify those exactly.
+
+\subsection{Algorithm}
+Algorithm~\ref{alg:spec} shows the procedure. One reference pass gives $p^{\mathrm{ref}}$. A draft score is then computed for every candidate from the reference prediction and the sequence alone, without running the model:
+\begin{equation}
+d(c)=\max\big(s_{\mathrm{on}}(c),\; s_{\mathrm{near}}(c),\; 0.5\cdot\mathbb{1}[c\ \text{creates GT or AG}]\big),
+\end{equation}
+where, with $s_j=\max(p^{\mathrm{ref}}_{j,\mathrm{d}},p^{\mathrm{ref}}_{j,\mathrm{a}})$ the reference site probability,
+\begin{equation}
+s_{\mathrm{on}}(c)=\max(s_v,s_{v-1}),\quad s_{\mathrm{near}}(c)=\max_{|j-v|\le 10} s_j\,e^{-|j-v|/4}.
+\end{equation}
+The first term catches \emph{loss} at a predicted site whose dinucleotide the variant hits (the label sits on the first base, so the second base is at $v-1$). The second catches loss through damage to the surrounding consensus, which decays over a few bases. The third catches \emph{gain} of a new GT or AG. The $K$ highest-scoring candidates are mutated and verified exactly in batched forward passes of $B$ sequences, and all others are reported as unknown (NaN), never as zero.
+
+\begin{algorithm}[t]
+\caption{Speculative ISM}\label{alg:spec}
+\begin{algorithmic}[1]
+\Require sequence $x$, region $R$, model $f$, budget $K$, batch $B$
+\State $C\gets\{(v,b):v\in R,\ b\neq x_v\}$ \Comment{$N=3|R|$}
+\State $p^{\mathrm{ref}}\gets f(x)$ \Comment{one forward pass}
+\For{$c\in C$} $d(c)\gets$ draft score from $p^{\mathrm{ref}}$ and $x$ \EndFor
+\State $S\gets$ top-$K$ of $C$ by $d$ \Comment{sort or select}
+\State $\Delta(c)\gets\mathrm{NaN}$ for all $c\in C$
+\For{each chunk $S_i$ of $B$ candidates in $S$}
+  \State $P\gets f(\{x^{c}: c\in S_i\})$ \Comment{one batched pass}
+  \For{$c\in S_i$}
+    \State $\Delta(c)\gets\max_{|j-v|\le W,\,k}|P^{c}_{j,k}-p^{\mathrm{ref}}_{j,k}|$
+  \EndFor
+\EndFor
+\State \Return $\Delta$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Correctness properties}
+The scheme has two properties that the tests check. First, \emph{verified scores are exact}: a candidate's $\Delta$ does not depend on which other candidates share its batch. Batched and sequential verification agree within $6\times10^{-8}$ in fp32 and within $4.1\times10^{-3}$ under fp16 autocast, where the difference comes from the batched half-precision kernels. Second, \emph{unverified candidates are never reported as benign}, so a downstream consumer can always tell ``scored low'' from ``not scored''. Neither property makes the scan exhaustive, so recall has to be measured against exhaustive ISM, which we do in Section~\ref{sec:results}.
+
+\subsection{Gradient draft (negative result)}
+We also tried a first-order draft that scores each substitution by $|\nabla_e S\cdot(e_{\mathrm{alt}}-e_{\mathrm{ref}})|$, where $e$ are the token embeddings and $S$ is the total donor and acceptor probability mass near the region. It needs one backward pass instead of none. At $K=96$ it reached recall 0.65 against the heuristic's 0.83 on 16 windows, so we did not pursue it. A plausible reason is that destroying a GT is a highly non-linear event that a linearisation around the reference does not capture.
+
+%=====================================================================
+\section{Complexity Analysis}\label{sec:complexity}
+%=====================================================================
+\subsection{Cost of one forward pass}
+A Hyena layer applies dense projections at cost $O(LD^2)$ and FFT long convolutions at cost $O(DL\log L)$~\cite{poli2023hyena,cooley1965fft}. With $\ell$ layers, one pass costs
+\begin{equation}
+T_f(L)=O\big(\ell\,(LD^2 + DL\log L)\big),
+\end{equation}
+and our feature extractor runs two of them. In practice small inputs are dominated by fixed overheads: the measured latency of one pass is almost flat from 1\,kb to 2\,kb (3.9\,ms) and then grows roughly linearly, doubling from 5\,kb (7.2\,ms) to 10\,kb (15.8\,ms) (Table~\ref{tab:latency}).
+
+\subsection{Exhaustive ISM}
+A scan of $n$ positions with a $\Delta$ window of $W$ bases and $F$ bases of flank evaluates $1+3n$ sequences of length $L=n+2(W+F)$, so
+\begin{equation}
+T_{\mathrm{ISM}}(n)=(1+3n)\,T_f(n+2W+2F)=O\big(n\,L\log L\big),
+\end{equation}
+which grows as $O(n^2\log n)$ once the region dominates the flank. Unlike CNNs, a long-convolution model offers no locality to exploit: because of causality a variant at $v$ changes \emph{every} forward state at positions $\ge v$ and every reverse state at positions $\le v$, so the fastISM strategy of recomputing a small cone~\cite{nair2022fastism} does not apply.
+
+\subsection{Speculative ISM}
+The draft costs $O(Nr)$ for a neighbourhood of $r=21$ bases, i.e.\ $O(N)$. Selecting the top $K$ costs $O(N\log N)$ with the sort we use, or $O(N)$ with linear-time selection~\cite{blum1973select,cormen2022clrs}. Both are negligible next to a single forward pass for the $N=192$ candidates we scan. Verification needs $\lceil K/B\rceil$ batched passes. If $t_1$ is the time per sequence of an unbatched pass and $t_B$ the time per sequence in a batch of $B$, then
+\begin{align}
+T_{\mathrm{seq}} &\approx (1+N)\,t_1, \qquad T_{\mathrm{bat}} \approx (1+N)\,t_B,\\
+T_{\mathrm{spec}}(K) &\approx t_1 + K t_B + T_{\mathrm{draft}} \approx (1+K)\,t_B.
+\end{align}
+This gives a simple cost model for the speedups:
+\begin{equation}
+S_{\mathrm{seq}}(K)=\frac{T_{\mathrm{seq}}}{T_{\mathrm{spec}}(K)}\approx\frac{1+N}{1+K}\cdot g,\qquad S_{\mathrm{bat}}(K)\approx\frac{1+N}{1+K},
+\label{eq:cost}
+\end{equation}
+with batching gain $g=t_1/t_B=T_{\mathrm{seq}}/T_{\mathrm{bat}}$. The model makes a point that is easy to miss: \emph{against a batched exhaustive baseline, speculation saves exactly the passes it skips and nothing more}. Any speedup beyond $(1+N)/(1+K)$ comes from batching, which exhaustive ISM can use too. Section~\ref{sec:results} shows that Eq.~\eqref{eq:cost} predicts our measurements within 1.4\%.
+
+\subsection{Recall bounds}
+To judge a draft we compare it with two reference points.
+
+\begin{proposition}[Random draft]\label{prop:random}
+If $S$ is a uniformly random subset of $C$ with $|S|=K$, then $\mathbb{E}[\mathrm{recall}]=K/N$ for any $H\neq\emptyset$.
+\end{proposition}
+\begin{proof}
+Each $c\in H$ is in $S$ with probability $\binom{N-1}{K-1}/\binom{N}{K}=K/N$. By linearity of expectation $\mathbb{E}|S\cap H|=|H|K/N$; dividing by $|H|$ gives the claim.
+\end{proof}
+
+\begin{proposition}[Oracle draft]\label{prop:oracle}
+For any draft, $\mathrm{recall}\le\min(1,K/|H|)$, with equality for a draft that ranks all of $H$ first.
+\end{proposition}
+\begin{proof}
+$|S\cap H|\le\min(|S|,|H|)=\min(K,|H|)$, and ranking $H$ first attains the bound.
+\end{proof}
+
+A useful draft should therefore lie well above $K/N$ and as close as possible to $\min(1,K/|H|)$. Because $|H|$ varies between windows, we average the oracle bound per window.
+
+%=====================================================================
+\section{Interactive System}\label{sec:system}
+%=====================================================================
+\subsection{Scoring service}
+A FastAPI~\cite{fastapi} application exposes a WebSocket endpoint, \texttt{/ws/splice-session}, with the messages in Table~\ref{tab:protocol}. Each connection holds a session with its own edited copy of the region. Edits are validated (position in range, reference base correct, alternative in \{A,C,G,T\}) and applied to the session immediately, because they are cheap and must never be lost. Scoring is expensive and runs on a single GPU worker thread. Every request receives a generation number, and a request that is still queued when a newer one arrives is skipped before it reaches the GPU, so stale work is avoided rather than merely hidden; a request already running finishes but is reported as \texttt{cancelled}. Reference predictions are cached per window, so an edit costs one mutant prediction, i.e.\ a forward and a reverse-complement pass over the window plus 1\,kb of flank on each side. Each response carries per-base reference and mutant probabilities, the four $\Delta$ tracks and the measured latency. The \texttt{scan} message runs speculative ISM and returns unverified candidates as null rather than zero, together with the acceptance rate, the passes saved and the speedup, whose basis is stated in the response.
+
+\begin{table}[t]
+\centering
+\caption{WebSocket protocol of the scoring service}
+\label{tab:protocol}
+\begin{tabular}{lp{5.6cm}}
+\toprule
+Message & Effect \\
+\midrule
+\texttt{hello} & sent on connect: engine and region (sequence, exons, coordinates) \\
+\texttt{mutate} & apply one SNV to the session, then rescore a window \\
+\texttt{score} & rescore a window $[s,e)$ without editing \\
+\texttt{reset} & restore the reference sequence \\
+\texttt{scan} & speculative ISM over $[s,e)$ with budget $K$ and threshold $\tau$ \\
+\texttt{ping} & liveness check, answered with \texttt{pong} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\scriptsize,
+  box/.style={draw, rounded corners=2pt, align=center, minimum height=7mm, inner sep=2.5pt},
+  arr/.style={-{Latex[length=1.5mm]}}]
+\node[box] (x) at (0,0) {DNA\\window};
+\node[box, minimum width=19mm] (f) at (1.95,0.5) {HyenaDNA$(x)$};
+\node[box, minimum width=19mm] (r) at (1.95,-0.5) {HyenaDNA$(\mathrm{rc}\,x)$\\flipped};
+\node[box] (h) at (4.3,0) {splice head\\$[h^{\rightarrow};h^{\leftarrow}]\!\to\!p_t$};
+\node[box] (d) at (6.55,0) {$\Delta$ scores\\$\pm$50\,bp};
+\node[box] (s) at (3.3,-1.75) {speculative ISM\\draft $\to$ verify top-$K$};
+\node[box] (ws) at (6.55,-1.75) {WebSocket service\\$\to$ browser explorer};
+\node[draw, dashed, rounded corners=3pt, inner sep=2pt, fit=(f)(r), label={[font=\tiny, inner sep=1pt]above:frozen backbone}] {};
+\draw[arr] (x.east) -- (f.west); \draw[arr] (x.east) -- (r.west);
+\draw[arr] (f.east) -- (h.west); \draw[arr] (r.east) -- (h.west);
+\draw[arr] (h) -- (d);
+\draw[arr] ([xshift=-2mm]d.south) -- ++(0,-0.7) -| (s.north);
+\draw[arr] (d.south -| ws.north) ++(2mm,0) -- ([xshift=2mm]ws.north);
+\draw[arr] (s) -- (ws);
+\end{tikzpicture}
+\caption{Svelto-DNA overview. The frozen backbone runs on both strands; a trained head predicts per-base site probabilities, from which $\Delta$ scores, speculative scans and the interactive service are built.}
+\label{fig:overview}
+\end{figure}
+
+\subsection{Browser explorer}
+The explorer is a Next.js application. It shows a virtualised 10\,kb sequence ribbon, reference and mutant probability tracks, the four $\Delta$ tracks and live telemetry from the service. A three.js scene provides a continuous zoom from a whole-brain view, motivated by the \textit{MAPT} example, down to the base pair. When the user edits a base, the server's response updates the tracks in place. The explorer sustains 57--60 frames per second on the evaluation laptop. Accessibility is checked automatically with axe, and end-to-end tests run in Playwright. By default the demo shows a synthetic 10\,kb region whose sequence is generated identically on client and server; the service can equally serve real GRCh38 windows.
+
+%=====================================================================
+\section{Experimental Setup}\label{sec:setup}
+%=====================================================================
+\textbf{Hardware and software.} All experiments ran on one laptop with an NVIDIA GeForce RTX~5060 Laptop GPU (8\,GB), an AMD Ryzen~AI~7~350 CPU and 22\,GB of usable system memory, using Python~3.11, PyTorch~2.14 with CUDA~13.0~\cite{paszke2019pytorch}, Hugging Face Transformers~5.19~\cite{wolf2020transformers} and FastAPI~0.143.
+
+\textbf{Measurement conditions.} Laptop GPUs change clock speeds with the power source and the platform power profile, and the overhead-bound batch-1 path is affected most. We therefore record the power state with each timing experiment and state it in every caption. The ablation (Fig.~\ref{fig:ablation}) and the batch-scaling measurement (Table~\ref{tab:batch}) ran on battery in the low-power profile. The power state of the 40-window benchmark (Table~\ref{tab:spec}) was not recorded. Recall, acceptance rate and all prediction metrics do not depend on hardware.
+
+\textbf{Timing protocol.} All GPU timings synchronise the device before and after the timed region, follow a warm-up that excludes CUDA initialisation, and report medians unless stated otherwise. The backbone profile uses 20 iterations per length, the $\Delta$ calculator 200 on the GPU and 50 on the CPU, and batch scaling 20 per batch size.
+
+\textbf{Speculative ISM protocol.} Each scan covers a region of 64 positions (192 candidates) with $W=50$ and $F$ bases of real flank on each side, so the evaluated sequence has $64+2(50+F)$ bases. The benchmark uses 40 held-out windows with $F=1000$ (2{,}164\,bp), half centred on an annotated site and half at a random position inside the labelled block (seed 7). The ablation uses 16 windows for each $F\in\{250,500,1000\}$ (664, 1{,}164 and 2{,}164\,bp; seed 11). Verification uses batches of $B=4$, the size at which the GPU saturates (Table~\ref{tab:batch}). A variant is high-impact if $\Delta\ge0.2$.
+
+\textbf{Reproducibility.} Every number in this paper is produced by a committed script from public data and written to a JSON file in the repository: the evaluation harness, the speculative benchmark, the ablation, the case study, and a script that derives the cost-model and recall-bound statistics. Tables in the repository are regenerated from those files.
+
+%=====================================================================
+\section{Results}\label{sec:results}
+%=====================================================================
+\subsection{Backbone efficiency}
+Table~\ref{tab:latency} profiles one fp16 backbone pass. A 10\,kb window, the context SpliceAI uses, takes 15.8\,ms and 262\,MB of GPU memory, and throughput peaks at about 0.7\,M bases per second around 5\,kb. Below 2\,kb the latency is set by fixed overheads, which is why short scans gain little from shorter sequences and, as shown below, little from batching.
+
+\begin{table}[t]
+\centering
+\caption{One fp16 HyenaDNA-small pass on the RTX 5060 Laptop GPU (20 iterations per length)}
+\label{tab:latency}
+\begin{tabular}{rrrrr}
+\toprule
+Length & Median & p95 & Memory & Throughput \\
+(bp) & (ms) & (ms) & (MB) & (M\,bp/s) \\
+\midrule
+1{,}024 & 3.91 & 6.54 & 67 & 0.24 \\
+2{,}048 & 3.94 & 4.58 & 89 & 0.50 \\
+5{,}000 & 7.19 & 7.29 & 154 & 0.70 \\
+10{,}000 & 15.79 & 16.10 & 262 & 0.63 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Splice-site prediction}
+Table~\ref{tab:pred} reports held-out test performance over 62.7\,M positions. ROC-AUC is near 1 for both classes, but under a 559:1 imbalance it is dominated by easy negatives and says little about usefulness~\cite{saito2015prc}. PR-AUC (0.630 donor, 0.552 acceptor) and top-$k$ accuracy are more informative. Top-$k$ accuracy, as defined by SpliceAI, is the fraction of true sites among the $k$ highest-scoring positions, where $k$ is the number of true sites; we also report it at $2k$. The untrained head scores PR-AUC 0.0007, which is chance level. Table~\ref{tab:thresh} shows precision and recall at the usual cut-offs. At 0.5 the model recovers 90\% of donors and 86\% of acceptors, but with low precision, so it is better suited to ranking positions than to calling sites with a fixed threshold.
+
+For context, SpliceAI-10k reports top-$k$ accuracy around 0.95 on its own test set~\cite{jaganathan2019spliceai}. That model is trained end to end with 10\,kb of context, whereas ours is a frozen 3.3\,M-parameter backbone with 1\,kb flanks and a 0.2\,M-parameter head trained for 14 minutes. The comparison is not like for like, and we present our model as a baseline that is good enough to drive the interactive and speculative experiments, not as a competitor.
+
+\begin{table}[t]
+\centering
+\caption{Splice-site prediction on held-out chromosomes 1, 3, 5, 7, 9 (62.7\,M positions, 56{,}008 donors, 56{,}011 acceptors)}
+\label{tab:pred}
+\begin{tabular}{lcc}
+\toprule
+ & Donor & Acceptor \\
+\midrule
+ROC-AUC & 0.9989 & 0.9984 \\
+PR-AUC & 0.6295 & 0.5520 \\
+Top-$k$ accuracy & 0.604 & 0.542 \\
+Top-$2k$ accuracy & 0.810 & 0.738 \\
+\midrule
+Untrained head, PR-AUC & \multicolumn{2}{c}{0.0007} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Precision (P) and recall (R) of site calls at fixed probability thresholds (test set)}
+\label{tab:thresh}
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{3}{c}{Donor} & \multicolumn{3}{c}{Acceptor} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Threshold & P & R & F1 & P & R & F1 \\
+\midrule
+0.2 & 0.167 & 0.962 & 0.284 & 0.136 & 0.945 & 0.238 \\
+0.5 & 0.287 & 0.897 & 0.435 & 0.246 & 0.859 & 0.382 \\
+0.8 & 0.466 & 0.757 & 0.577 & 0.424 & 0.679 & 0.522 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Speculative ISM and the cost model}
+Table~\ref{tab:spec} summarises the 40-window benchmark. Exact batched verification is only $1.2\times$ faster than sequential ISM. At $K=96$ the speculative scan is $2.38\times$ faster than sequential ISM and $1.99\times$ faster than batched exhaustive ISM, and it finds 83\% of the high-impact variants on average (57\% in the worst window). At $K=24$ it is $9.1\times$ faster but finds only 31\%.
+
+\begin{table}[t]
+\centering
+\caption{Speculative ISM on 40 held-out windows (64\,bp region, 192 candidates, 2{,}164\,bp of sequence, $\Delta\ge0.2$). Speedup vs.\ sequential ISM; median times; power state not recorded.}
+\label{tab:spec}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
+\toprule
+Method & ms & Speedup & Recall & Min.\ rec. & $\alpha$ \\
+\midrule
+Sequential & 1346 & 1.00$\times$ & 1.00 & 1.00 & -- \\
+Batched exhaustive & 1126 & 1.20$\times$ & 1.00 & 1.00 & -- \\
+Speculative $K{=}96$ & 567 & 2.38$\times$ & 0.83 & 0.57 & 0.26 \\
+Speculative $K{=}48$ & 287 & 4.68$\times$ & 0.51 & 0.00 & 0.30 \\
+Speculative $K{=}24$ & 148 & 9.10$\times$ & 0.31 & 0.00 & 0.38 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:cost} compares these speedups with Eq.~\eqref{eq:cost}, using the measured batching gain $g=1346/1126=1.195$. The prediction is within 1.4\% at every budget, and the speedups over batched exhaustive ISM equal the pass ratio $(1+N)/(1+K)$ almost exactly. The interpretation is simple: speculation does not make individual passes cheaper, it skips passes, and its speedup is the factor by which it reduces their number times whatever batching gives. Since batching also benefits exhaustive ISM, the fair headline comparison is against batched exhaustive ISM.
+
+\begin{table}[t]
+\centering
+\caption{Cost model (Eq.~\ref{eq:cost}) vs.\ measurement, $N=192$, $g=1.195$}
+\label{tab:cost}
+\setlength{\tabcolsep}{3.2pt}
+\begin{tabular}{rcccccc}
+\toprule
+$K$ & $\frac{1+N}{1+K}$ & Pred.\ $S_{\mathrm{seq}}$ & Meas.\ $S_{\mathrm{seq}}$ & Error & Meas.\ $S_{\mathrm{bat}}$ & Saved \\
+\midrule
+96 & 1.99 & 2.38 & 2.38 & $-0.1\%$ & 1.99 & 49.7\% \\
+48 & 3.94 & 4.71 & 4.68 & $-0.5\%$ & 3.92 & 74.6\% \\
+24 & 7.72 & 9.23 & 9.10 & $-1.4\%$ & 7.61 & 87.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Why batching barely helps}
+Table~\ref{tab:batch} measures the time per sequence of a full prediction (forward and reverse-complement passes plus head) on 2{,}164\,bp inputs as the batch grows. The per-sequence cost falls by only 25\% from batch 1 to batch 4 and then rises again, settling at about 10\,ms. HyenaDNA-small has just 3.3\,M parameters and $D=256$, so a single 2\,kb sequence already keeps the GPU busy with several milliseconds of FFT and element-wise work, and larger batches add memory traffic without adding useful parallelism. This is the opposite of the regime in which speculative decoding was developed, where a large model is memory-bound at batch 1 and verifying many tokens costs about the same as generating one.
+
+\begin{table}[t]
+\centering
+\caption{Batch scaling of one full prediction (fwd + rc passes + head) on 2{,}164\,bp inputs; median of 20; battery, low-power profile}
+\label{tab:batch}
+\begin{tabular}{rrrr}
+\toprule
+Batch & Total (ms) & Per sequence (ms) & Relative \\
+\midrule
+1 & 11.03 & 11.03 & 1.00 \\
+2 & 17.29 & 8.64 & 0.78 \\
+4 & 33.06 & 8.26 & 0.75 \\
+8 & 78.52 & 9.82 & 0.89 \\
+16 & 159.93 & 10.00 & 0.91 \\
+32 & 318.84 & 9.96 & 0.90 \\
+64 & 640.58 & 10.01 & 0.91 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Sequence length and budget}
+Fig.~\ref{fig:ablation} varies the sequence length and the budget. Recall depends on $K$ but hardly on length: averaged over all 48 window--length runs it is 0.28, 0.39, 0.60 and 0.87 at $K=12,24,48,96$. The ablation's timings were recorded on battery in the low-power profile, which slows the overhead-bound sequential path disproportionately. Its batching gain is therefore larger ($1.4$--$3.1\times$) than in Table~\ref{tab:spec}, and so are its absolute speedups, consistent with Eq.~\eqref{eq:cost}; the figure should be read for its trends rather than its absolute values. The batching gain shrinks as sequences get longer, as expected when per-sequence work grows relative to fixed overheads.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{speedup_vs_length.png}\\[1mm]
+\includegraphics[width=\columnwidth]{recall_alpha_vs_k.png}
+\caption{Top: speedup over sequential ISM against sequence length (mean $\pm$ s.d.\ over 16 windows); the legend gives each budget's recall. Bottom: recall and acceptance rate against the budget $K$. Timings recorded on battery in the low-power profile.}
+\label{fig:ablation}
+\end{figure}
+
+\subsection{Draft quality against random and oracle drafts}
+Fig.~\ref{fig:bounds} places the heuristic draft between the two bounds of Section~\ref{sec:complexity}, using the ablation's 48 runs. Windows contain on average 32.6 high-impact candidates out of 192 (39.3 in windows centred on a site, 25.9 at random positions). The draft is $4.5\times$ better than random at $K=12$ and $1.7\times$ better at $K=96$, so it carries real information. It reaches only 51--64\% of the oracle at $K\le48$, however, and 87\% at $K=96$, where the oracle already has perfect recall. At small budgets the draft spends its slots on candidates that hit predicted sites but are not high-impact, and the acceptance rate of 0.26--0.38 in Table~\ref{tab:spec} shows the same thing. Recall is similar in windows centred on a site and in random windows (0.84 and 0.91 at $K=96$), so the draft is not tuned to the site-centred case.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\columnwidth, height=4.6cm, xlabel={verification budget $K$ (of 192)}, ylabel={recall of high-impact variants},
+  xmode=log, log basis x=2, xtick={12,24,48,96}, xticklabels={12,24,48,96}, ymin=0, ymax=1.05, xmin=10, xmax=110,
+  grid=major, grid style={gray!20}, legend style={font=\scriptsize, at={(0.5,1.03)}, anchor=south, legend columns=3, /tikz/every even column/.append style={column sep=4pt}},
+  tick label style={font=\scriptsize}, label style={font=\small}]
+\addplot[cgray, thick, dashed, mark=*, mark size=1.3pt] coordinates {(12,0.5326)(24,0.7626)(48,0.9345)(96,1.0)};
+\addlegendentry{oracle}
+\addplot[cblue, very thick, mark=square*, mark size=1.5pt] coordinates {(12,0.2828)(24,0.3857)(48,0.5967)(96,0.8734)};
+\addlegendentry{heuristic draft}
+\addplot[cred, thick, dotted, mark=triangle*, mark size=1.6pt] coordinates {(12,0.0625)(24,0.125)(48,0.25)(96,0.5)};
+\addlegendentry{random}
+\end{axis}
+\end{tikzpicture}
+\caption{Recall of the heuristic draft compared with a uniform-random draft (Proposition~\ref{prop:random}) and an oracle draft (Proposition~\ref{prop:oracle}), averaged over the 48 ablation runs.}
+\label{fig:bounds}
+\end{figure}
+
+\subsection{Interactive latency}
+Through the WebSocket service, a 1\,kb edit (a mutant prediction over the window plus flanks, followed by $\Delta$ computation and serialisation) takes a median round trip of 12.5\,ms (p95 13.9\,ms), measured by the service's latency test with the real backbone and head. This is well below the commonly cited 100\,ms limit for a response to feel immediate, so a user can edit bases and watch the splice landscape respond as they type.
+
+\subsection{ClinVar case studies}
+We scored the eight ClinVar pathogenic variants of Table~\ref{tab:deltaval} with our own model. Minus-strand variants are scored in transcript orientation, as in training, and their peak offsets are converted back to genomic orientation. Table~\ref{tab:cases} and Fig.~\ref{fig:casesummary} show the results. Our model calls the correct site-loss component for all eight variants, with peak $\Delta$ between 0.840 and 0.995 (mean 0.944, against 0.973 for SpliceAI; mean absolute difference 0.051). Three variants lie on training chromosomes, so their sites were seen as labels during training; three are on validation chromosomes, used only for checkpoint selection; and two are on held-out test chromosomes. The two test variants, \textit{ABHD5} ($\Delta_{\mathrm{AL}}=0.962$) and \textit{ABCA1} ($\Delta_{\mathrm{DL}}=0.903$), behave like the rest.
+
+Peak positions differ from SpliceAI's by 1--2\,bp. This is not an error. We label the first base of the dinucleotide, while SpliceAI labels the exon-side boundary base, which in transcript orientation lies one base before our donor label and two bases after our acceptor label. All eight offsets differ by exactly this convention shift, which also confirms that our strand handling is correct.
+
+Secondary components show where the models disagree. For \textit{ABCC2} our model predicts a small acceptor loss ($\Delta_{\mathrm{AL}}=0.32$) that SpliceAI does not (0.001), while both predict a donor gain of similar size (0.22 versus 0.245). For \textit{AAAS} SpliceAI predicts an acceptor loss of 0.28 that we miss. Such disagreements are visible to a user of the explorer, who can inspect all four tracks.
+
+Fig.~\ref{fig:cases} shows two variants in detail. In \textit{ABCA1} (test chromosome, minus strand) the reference donor peak of 0.90 vanishes in the mutant. Gradient$\times$input saliency~\cite{shrikumar2017deeplift} of the reference donor concentrates on the dinucleotide and the three exonic positions before it, matching the MAG$|$GT consensus. \textit{ABAT} shows the same pattern on the plus strand.
+
+\begin{table}[t]
+\centering
+\caption{Our model on eight ClinVar pathogenic splice variants. Split: the chromosome's role in training. Offsets (ours/SpliceAI) are genomic; all pairs differ by the labelling convention.}
+\label{tab:cases}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llcccccc}
+\toprule
+Gene & Chr. & Split & Str. & Comp. & Ours & SpliceAI & Offsets \\
+\midrule
+\textit{ABAT} & 16 & train & + & DL & 0.937 & 0.996 & $0/{-1}$ \\
+\textit{ABCC2} & 10 & val & + & DL & 0.957 & 0.995 & ${-1}/{-2}$ \\
+\textit{ABCG8} & 2 & val & + & AL & 0.840 & 0.936 & ${-1}/{+1}$ \\
+\textit{ABHD5} & 3 & test & + & AL & 0.962 & 0.981 & $0/{+2}$ \\
+\textit{AAAS} & 12 & train & $-$ & DL & 0.969 & 0.985 & $0/{+1}$ \\
+\textit{AAGAB} & 15 & train & $-$ & DL & 0.986 & 0.986 & $0/{+1}$ \\
+\textit{AARS2} & 6 & val & $-$ & DL & 0.995 & 0.905 & $0/{+1}$ \\
+\textit{ABCA1} & 9 & test & $-$ & DL & 0.903 & 0.997 & $0/{+1}$ \\
+\midrule
+Mean & & & & & 0.944 & 0.973 & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.78\textwidth]{case_summary.png}
+\caption{Peak $\Delta$ of the correct component for eight ClinVar pathogenic splice variants: our model (blue) and SpliceAI as published (grey). The dotted line is the 0.2 high-recall cut-off.}
+\label{fig:casesummary}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.49\textwidth]{case_ABCA1.png}\hfill
+\includegraphics[width=0.49\textwidth]{case_ABAT.png}
+\caption{Left: \textit{ABCA1} chr9:104{,}793{,}170 C$>$T (ClinVar 2627928; held-out test chromosome; minus strand, shown in transcript orientation, where the variant reads G$>$A). Right: \textit{ABAT} chr16:8{,}746{,}099 G$>$A (ClinVar 635252; training chromosome). Top panels: reference and mutant donor probability. Bottom panels: gradient$\times$input saliency of the reference donor, with the variant highlighted.}
+\label{fig:cases}
+\end{figure*}
+
+%=====================================================================
+\section{Discussion}\label{sec:discussion}
+%=====================================================================
+\subsection{Speed versus recall}
+Speculative verification is exact for the candidates it verifies, but in variant scanning the cost of a missed high-impact variant is clinical, not cosmetic. On our hardware the honest summary is: $1.2\times$ with no missed variants, or about $2.4\times$ while missing about one high-impact variant in six on average and up to 43\% in the worst window. Unlike token-level speculative decoding, where rejected drafts are regenerated and outputs stay identical, an unverified variant here is simply unknown. We therefore recommend that speculative methods for genomic models always report recall against exhaustive scanning, and that interfaces present unverified candidates as such.
+
+\subsection{When would speculation pay off?}
+The cost model (Eq.~\ref{eq:cost}) shows what would have to change. On hardware or models where batching is efficient ($g\gg1$), exhaustive batched ISM becomes cheap and the case for speculation weakens further. Speculation pays off when passes are expensive and cannot be amortised, as with large backbones, long contexts or CPU-only deployment, and when the draft has high recall at small $K$. Our draft leaves a large gap to the oracle at $K\le48$ (Fig.~\ref{fig:bounds}). A learned drafter trained on exhaustive ISM labels, which are cheap to generate offline, is the most promising way to close it. Another route would make speculation lossless: if a cheap certificate could bound $\Delta(c)<\tau$ for the skipped candidates, for example a Lipschitz bound of the head around the reference features, a scan could skip them with a guarantee instead of a heuristic.
+
+\subsection{Reverse-complement fusion as a cheap fix for causality}
+Running a causal model on both strands doubles the cost of a pass but needs no retraining of the backbone, and our measurements confirm that the second pass supplies the downstream context the first lacks. Bidirectional, reverse-complement-equivariant models such as Caduceus~\cite{schiff2024caduceus} build this into the architecture and may give better features at the same cost. For frozen causal backbones, two-strand fusion is a reasonable default for any task in which downstream sequence matters.
+
+\subsection{Frozen backbone, small head}
+A frozen 3.3\,M-parameter backbone with a 0.2\,M-parameter head reaches a mean test PR-AUC of 0.59 after 14 minutes of training, but it remains well behind SpliceAI. Three factors probably account for most of the gap: the 1\,kb flank versus SpliceAI's 5\,kb on each side, the absence of fine-tuning, and the small backbone. The training curve (Fig.~\ref{fig:training}) is still rising slowly, so longer training would add a little, but context and capacity are likely to matter more. For an interactive tool the trade is attractive: the whole model fits easily in laptop GPU memory and an edit is rescored in 12.5\,ms.
+
+\subsection{Silent data errors}
+Both ClinVar errors in Section~\ref{sec:data} would have passed unnoticed in aggregate statistics: the first admitted every SNV in ClinVar regardless of distance, and the second moved 86{,}949 variants into the positive class. They were found only by checking individual records against their source text. We encourage anyone building on ClinVar to test their parser against the current wording of the clinical-significance field.
+
+%=====================================================================
+\section{Limitations and Threats to Validity}\label{sec:limits}
+%=====================================================================
+\textbf{Data.} Paralogs are not removed from the test set, so some test genes may resemble training genes and inflate test metrics. Labels come from one canonical transcript per gene, so sites used only by other isoforms count as negatives, which depresses measured precision.
+
+\textbf{Model.} The model sees only 1\,kb of flank, well below SpliceAI's 10\,kb of context, and the backbone is not fine-tuned. The case study covers eight variants, three of them on training chromosomes; it illustrates behaviour but is not a clinical validation.
+
+\textbf{Timing.} All timings come from one laptop GPU, and wall-clock results depend on its power state. The ablation and batch-scaling measurements ran on battery in a low-power profile, and the power state of the main benchmark was not recorded. Recall and acceptance rate are unaffected, and the cost model explains how timings scale with the batching gain, but absolute speedups should be re-measured on mains power before they are compared with other work.
+
+\textbf{Scope of the speculative study.} We evaluated one heuristic and one gradient-based draft, one model size and regions of 64 positions. Larger regions increase $N$ and could favour speculation if the draft's recall holds, which we have not tested.
+
+\textbf{Demo.} The browser demo shows a synthetic region by default, although the service can serve real GRCh38 windows.
+
+%=====================================================================
+\section{Ethical Considerations}
+%=====================================================================
+Svelto-DNA is a research and teaching tool. Its predictions are not validated for clinical use, and its splice-site model is measurably weaker than established predictors. Speculative scans deliberately leave candidates unscored, and a user who mistook ``not verified'' for ``benign'' could miss a pathogenic variant; for this reason the service never reports unverified candidates as zero. All data used are public (GENCODE, Ensembl, ClinVar) and contain no individual-level information, and the service processes only sequences supplied by the user.
+
+%=====================================================================
+\section{Conclusion}
+%=====================================================================
+Svelto-DNA turns a frozen genomic foundation model into an interactive splice-disruption tool with validated $\Delta$ scores and edits rescored in 12.5\,ms. Two-strand fusion makes a causal backbone usable for splice prediction, and the model calls the correct site loss for all eight ClinVar pathogenic variants we examined. For speculative in-silico mutagenesis, a simple cost model explains the measured speedups almost exactly: against batched exhaustive ISM, speculation saves only the passes it skips, and on small models and consumer GPUs batching adds little. The result is a tunable trade between speed and recall rather than a free speedup. Our heuristic draft is far better than random but leaves a large gap to an oracle at small budgets. Next steps are a learned drafter trained on exhaustive ISM labels, certified skipping, longer context, bidirectional backbones, and measurements on server-class GPUs where batching may amortise better.
+
+\section*{Code and Data Availability}
+Code, scripts and measured results are in the Svelto-DNA repository. Every number in this paper is produced by a committed script from public GENCODE, Ensembl and ClinVar data and stored as JSON alongside the scripts.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

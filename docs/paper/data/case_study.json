@@ -1,0 +1,218 @@
+[
+ {
+  "gene": "ABAT",
+  "variant": "chr16-8746099-G-A",
+  "clinvar_id": "635252",
+  "strand": "+",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.019648566842079163,
+   "DL": 0.9373917579650879,
+   "AG": 0.02071501687169075,
+   "AL": 0.0041843801736831665
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.0,
+   "DS_AL": 0.0,
+   "DS_DG": 0.201,
+   "DS_DL": 0.996,
+   "DP_AG": -2,
+   "DP_AL": -27,
+   "DP_DG": 3,
+   "DP_DL": -1
+  }
+ },
+ {
+  "gene": "ABCC2",
+  "variant": "chr10-99808231-T-A",
+  "clinvar_id": "8414",
+  "strand": "+",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.22037038207054138,
+   "DL": 0.9571185111999512,
+   "AG": 0.015761077404022217,
+   "AL": 0.32134974002838135
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": -1
+  },
+  "spliceai_published": {
+   "DS_AG": 0.001,
+   "DS_AL": 0.001,
+   "DS_DG": 0.245,
+   "DS_DL": 0.995,
+   "DP_AG": -1,
+   "DP_AL": -35,
+   "DP_DG": 2,
+   "DP_DL": -2
+  }
+ },
+ {
+  "gene": "ABCG8",
+  "variant": "chr2-43852353-G-C",
+  "clinvar_id": "1983599",
+  "strand": "+",
+  "junction_type": "acceptor",
+  "ours": {
+   "DG": 0.012019827961921692,
+   "DL": 0.0005720378831028938,
+   "AG": 0.047974880784749985,
+   "AL": 0.8398541212081909
+  },
+  "ours_peak": {
+   "component": "AL",
+   "offset": -1
+  },
+  "spliceai_published": {
+   "DS_AG": 0.004,
+   "DS_AL": 0.936,
+   "DS_DG": 0.001,
+   "DS_DL": 0.005,
+   "DP_AG": -48,
+   "DP_AL": 1,
+   "DP_DG": 35,
+   "DP_DL": 0
+  }
+ },
+ {
+  "gene": "ABHD5",
+  "variant": "chr3-43702213-A-G",
+  "clinvar_id": "5349",
+  "strand": "+",
+  "junction_type": "acceptor",
+  "ours": {
+   "DG": 0.017059482634067535,
+   "DL": 0.03697120398283005,
+   "AG": 0.00732847535982728,
+   "AL": 0.9621729254722595
+  },
+  "ours_peak": {
+   "component": "AL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.082,
+   "DS_AL": 0.981,
+   "DS_DG": 0.0,
+   "DS_DL": 0.0,
+   "DP_AG": 26,
+   "DP_AL": 2,
+   "DP_DG": 8,
+   "DP_DL": 30
+  }
+ },
+ {
+  "gene": "AAAS",
+  "variant": "chr12-53315093-C-T",
+  "clinvar_id": "3251594",
+  "strand": "-",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.002316989004611969,
+   "DL": 0.9691439270973206,
+   "AG": 0.08162766695022583,
+   "AL": 0.010595187544822693
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.0,
+   "DS_AL": 0.282,
+   "DS_DG": 0.001,
+   "DS_DL": 0.985,
+   "DP_AG": -37,
+   "DP_AL": 47,
+   "DP_DG": -35,
+   "DP_DL": 1
+  }
+ },
+ {
+  "gene": "AAGAB",
+  "variant": "chr15-67231813-C-A",
+  "clinvar_id": "4072153",
+  "strand": "-",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.02770751714706421,
+   "DL": 0.9859606027603149,
+   "AG": 0.024785026907920837,
+   "AL": 0.0001338146103080362
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.0,
+   "DS_AL": 0.0,
+   "DS_DG": 0.042,
+   "DS_DL": 0.986,
+   "DP_AG": -43,
+   "DP_AL": 12,
+   "DP_DG": -43,
+   "DP_DL": 1
+  }
+ },
+ {
+  "gene": "AARS2",
+  "variant": "chr6-44304180-C-G",
+  "clinvar_id": "1176510",
+  "strand": "-",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.08568739891052246,
+   "DL": 0.9952126741409302,
+   "AG": 0.0010148963192477822,
+   "AL": 0.1124948039650917
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.0,
+   "DS_AL": 0.001,
+   "DS_DG": 0.045,
+   "DS_DL": 0.905,
+   "DP_AG": -42,
+   "DP_AL": 24,
+   "DP_DG": -34,
+   "DP_DL": 1
+  }
+ },
+ {
+  "gene": "ABCA1",
+  "variant": "chr9-104793170-C-T",
+  "clinvar_id": "2627928",
+  "strand": "-",
+  "junction_type": "donor",
+  "ours": {
+   "DG": 0.006414581090211868,
+   "DL": 0.9027428030967712,
+   "AG": 0.03309899568557739,
+   "AL": 0.06779402494430542
+  },
+  "ours_peak": {
+   "component": "DL",
+   "offset": 0
+  },
+  "spliceai_published": {
+   "DS_AG": 0.044,
+   "DS_AL": 0.0,
+   "DS_DG": 0.044,
+   "DS_DL": 0.997,
+   "DP_AG": 18,
+   "DP_AL": 1,
+   "DP_DG": 25,
+   "DP_DL": 1
+  }
+ }
+]

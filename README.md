@@ -15,7 +15,34 @@
 
 Variant effect predictors and deep genomic foundation models (such as **SpliceAI**, **Nucleotide Transformer**, and **HyenaDNA**) have significantly advanced the clinical interpretation of non-coding mutations. However, standard architectures rely on sequential autoregressive decoding or heavy, un-accelerated convolutional forward passes across large sequence windows ($1,000$ to $10,000$ bp). Consequently, evaluating in silico saturation mutagenesis (ISM) or exploring novel candidate variants has remained confined to multi-hour offline batch processing pipelines.
 
-**Svelto-DNA** transforms clinical splice-site disruption analysis from slow batch jobs into an **interactive, sub-second web diagnostic workflow**. By introducing **Medusa-style speculative draft verification heads** and **directed acyclic graph (DAG) tree attention masking** directly onto frozen genomic foundation backbones, Svelto-DNA evaluates multiple candidate mutation states simultaneously in a **single forward pass**, achieving a **$2.0\times$ to $3.5\times$ wall-clock speedup** without compromising ground-truth diagnostic fidelity.
+**Svelto-DNA** transforms clinical splice-site disruption analysis from slow batch jobs into an **interactive, sub-second web diagnostic workflow**. It adds a **speculative draft-and-verify scheme for in-silico mutagenesis** on a frozen genomic foundation backbone: one reference pass drafts which variants could matter, and the top candidates are verified exactly in **batched forward passes** (HyenaDNA has no attention, so the originally planned tree-attention masking does not apply). Measured on a laptop GPU: **1.2× exact**, up to **2.4× at 83% recall** of high-impact variants; larger speedups trade more recall. *See Current Status below.*
+
+---
+
+## 🚦 Current Status (2026-10-12)
+
+Measured on an RTX 5060 Laptop GPU unless noted. Details and reproduction commands are in the linked PRs.
+
+| Area | Status |
+| :--- | :--- |
+| Backbone (#1) | Real HyenaDNA (`hyenadna-small-32k`) frozen, with its own tokenizer; fp32 weights + fp16 autocast. 10 kb forward 15.8 ms, 262 MB peak VRAM. |
+| Data (#2) | GENCODE v46 + GRCh38 + ClinVar: 19,120 canonical transcripts, 366,000 splice sites, 2.1 M splice-proximal ClinVar SNVs; chromosome-disjoint splits with zero leakage. Paralogs not yet removed from test. |
+| Splice prediction | Trained head on held-out chr1,3,5,7,9 (62.7 M positions): PR-AUC donor **0.630** / acceptor **0.552**, ROC-AUC 0.9989 / 0.9984, top-1 60.4% / 54.2%. |
+| Delta calculator (#5) | Reproduces SpliceAI's published scores for 8 ClinVar pathogenic variants within their 3-decimal rounding (max diff 0.000476), peak positions exact; 10 kb in 0.21 ms on GPU. |
+| Server (#6) | `/ws/splice-session`: 1 kb edit round trip median 12.5 ms; stale edits skipped; sessions isolated. |
+| Speculative ISM (#4) | Verified scores exact (fp32 6e-8). Batching alone: ~1.2–1.4×. Larger speedups trade recall: K=96 **2.4× at 83% recall**, K=24 9× at 31%. The earlier "2–3.5× without compromising fidelity" claim is **not** supported. |
+| Web app (#7–#9) | `web/`: Next.js explorer (brain → chromosome → exon → landscape), virtualized 10 kb ribbon, dual tracks, HUD; measured telemetry when connected to the server, labelled "Simulated" otherwise. |
+| Research (#10) | Saliency, K × length ablation, `docs/paper/results_summary.tex`, figures, methodology and a ClinVar case study in `docs/paper/`. |
+
+--- | :--- |
+| Backbone | Real HyenaDNA (`LongSafari/hyenadna-small-32k-seqlen-hf`) loads frozen with its own tokenizer; fp32 weights, fp16 autocast on CUDA. Profiled on an RTX 5060 Laptop: 10 kb in 15.8 ms, 262 MB peak VRAM (`baseline_telemetry.json`). The mock backbone remains for offline tests. |
+| SpliceAI data | Synthetic only. No loader for the real SpliceAI-10k files exists yet. |
+| ClinVar data | Parser works, but the ±50 bp junction filter needs exon annotations (GTF); real ClinVar files carry no junction distance, so every SNV currently passes. |
+| Splice benchmark | Harness is honest as of `ebbcca0`. The untrained mock head scores at chance (donor ROC-AUC 0.35); no trained model has been benchmarked. |
+| Draft heads (K=3/4) | Implemented and tested on random targets; not yet trained on splice labels. |
+| Delta calculator | Implemented; 0.55 ms for 10 kb on CPU (`delta_benchmark_telemetry.json`). |
+| DAG tree verification, speedup | Not started (#4). The 2.0–3.5× figure is a target. |
+| WebSocket API, frontend | Not started (#6–#9). |
 
 ---
 
@@ -116,7 +143,7 @@ sweltoDNA/
 ├── scripts/                         # Operational & data extraction utilities
 │   ├── extract_splice_data.py       # Ingest & partition SpliceAI & ClinVar into Parquet
 │   └── eval_splice_benchmark.py     # Benchmark evaluation CLI on test splits
-├── tests/                           # Complete automated pytest suite (85+ tests)
+├── tests/                           # Automated pytest suite (78 tests)
 │   ├── test_backbone.py             # Foundation oracle parameter freezing & determinism
 │   ├── test_tokenizer.py            # Coordinate inversion & IUPAC tokens
 │   ├── test_draft_heads.py          # Tensor shapes, parameter overhead & discount decay
@@ -144,7 +171,7 @@ cd SweltoDNA
 uv sync --extra dev  # or: python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 ```
 
-### 2. Run Test Suite (85+ Tests)
+### 2. Run Test Suite (78 Tests)
 ```bash
 .venv/bin/pytest tests/
 ```

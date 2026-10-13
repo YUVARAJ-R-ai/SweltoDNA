@@ -35,7 +35,7 @@ Deep genomic foundation models (e.g., **SpliceAI**, **Nucleotide Transformer**, 
 **Svelto-DNA** eliminates this bottleneck by adapting **Medusa-style speculative decoding** to genomic variant interpretation:
 1. **Frozen Verification Oracle:** The primary pre-trained genomic foundation model is completely frozen (`trainable_parameters == 0`, `grad == None`), acting strictly as the invariant ground-truth oracle.
 2. **Auxiliary Speculative Draft Heads ($K=3/4$):** Lightweight residual multi-layer perceptrons (adding $< 3.9\%$ parameter overhead) are attached to penultimate representations to draft adjacent candidate token/splice probabilities concurrently.
-3. **Directed Acyclic Graph (DAG) Tree Verification:** Candidate mutation trajectories are compiled into a custom 2D tree attention mask, verified simultaneously in a **single parallel forward pass** through the backbone ($2.0\times - 3.5\times$ wall-clock acceleration).
+3. **Directed Acyclic Graph (DAG) Tree Verification:** Candidate mutation trajectories are compiled into a custom 2D tree attention mask, verified simultaneously in a **single parallel forward pass** through the backbone (target: $2.0\times - 3.5\times$ wall-clock acceleration; not yet implemented or measured, see issue #4).
 4. **Vectorized Splice Disruption ($\Delta$) Engine:** A 1D max-pooling tensor kernel computes localized donor/acceptor gain and loss across $10,000$ bp windows in **sub-millisecond latency** ($0.55\text{ ms}$ on CPU, $> 18\text{M bp/s}$).
 
 ---
@@ -375,18 +375,18 @@ uv run python benchmarks/benchmark_delta.py \
 
 ## 7. Verification & Test Coverage
 
-The engine is covered by an automated test suite across seven dedicated modules:
+The engine is covered by an automated test suite across seven modules:
 
 | Test Suite File | Tested Subsystem | Tests Passed | Key Assertions Verified |
 | :--- | :--- | :--- | :--- |
-| `tests/test_backbone.py` | Backbone Oracle | 7 / 7 | Zero trainable parameters, deterministic output ($r = 1.000$), context window padding. |
-| `tests/test_tokenizer.py` | Genomic Tokenizer | 11 / 11 | Single-nucleotide mapping, reverse complement, IUPAC degeneracy handling. |
-| `tests/test_draft_heads.py` | Speculative Heads | 26 / 26 | Tensor shape `(K, B, L, C)`, discount decay, parameter isolation (`grad == None`), padding `ignore_index`. |
-| `tests/test_delta.py` | Delta Scoring | 13 / 13 | Vectorized max-pooling, ClinVar ground truth tolerance ($10^{-4}$), batched peak extraction ($B > 1$), boundary conditions. |
-| `tests/test_data_pipeline.py` | ClinVar & SpliceAI | 9 / 9 | Polars Parquet serialization, strand reflection, biological polarity on $(-)$ strand. |
-| `tests/test_benchmark_eval.py` | Evaluation Suite | 4 / 4 | Top-k accuracy, ROC-AUC / PR-AUC under 100:1 class imbalance, single-class guards. |
-| `tests/test_profiler.py` | Baseline Profiler | 1 / 1 | Telemetry JSON export, memory allocation recording. |
-| **Total** | **Full System** | **85+ / 85+** | **100% Passing Test Suite** |
+| `tests/test_backbone.py` | Backbone Oracle | 9 | Zero trainable parameters, deterministic output ($r = 1.000$), context window padding, global RNG left untouched. |
+| `tests/test_tokenizer.py` | Genomic Tokenizer | 11 | Single-nucleotide mapping, reverse complement, IUPAC degeneracy handling. |
+| `tests/test_draft_heads.py` | Speculative Heads | 28 | Tensor shape `(K, B, L, C)`, discount decay, parameter isolation (`grad == None`), splice class 0 not ignored by default. |
+| `tests/test_delta.py` | Delta Scoring | 12 | Vectorized max-pooling, hand-built ClinVar-style fixtures (not real ClinVar scores), batched peak extraction ($B > 1$), boundary conditions. |
+| `tests/test_data_pipeline.py` | ClinVar & SpliceAI | 9 | Polars Parquet serialization, strand reflection, biological polarity on $(-)$ strand. Synthetic data only. |
+| `tests/test_benchmark_eval.py` | Evaluation Suite | 8 | Top-k accuracy, ROC-AUC / PR-AUC under 100:1 class imbalance, single-class guards, no label leakage into predictions, strict checkpoint loading. |
+| `tests/test_profiler.py` | Baseline Profiler | 1 | Telemetry JSON export, memory allocation recording. |
+| **Total** | **Full System** | **78** | All passing on CPU (torch 2.14.1, Python 3.11). |
 
 ---
 *Document Version: 1.0.0 — Generated for Svelto-DNA Clinical Genomic Research Platform.*

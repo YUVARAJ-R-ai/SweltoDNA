@@ -27,7 +27,7 @@ class DraftHeadTrainer:
         draft_heads: SpeculativeDraftHeads,
         optimizer: Optional[torch.optim.Optimizer] = None,
         loss_fn: Optional[SpeculativeDraftLoss] = None,
-        ignore_index: Optional[int] = 0,
+        ignore_index: Optional[int] = -100,
         lr: float = 1e-3,
         weight_decay: float = 1e-2,
         device: Optional[Union[str, torch.device]] = None,

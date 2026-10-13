@@ -276,3 +276,53 @@ def generate_synthetic_spliceai_dataset(
     config = SpliceAIDatasetConfig(window_size=window_size)
     parser = SpliceAIParser(config=config)
     return parser.process_records(records)
+
+
+def build_splice_windows(
+    genome,
+    transcripts,
+    block: int = 1000,
+    context: int = 1000,
+    background_blocks: int = 1,
+    seed: int = 42,
+) -> pl.DataFrame:
+    """
+    Tiles each canonical transcript into `block`-bp label blocks with `context` bp of flank on both sides,
+    in transcript (5'→3') orientation. Labels mark the first base of the motif: donor G of GT (1),
+    acceptor A of AG (2). Blocks containing a splice site are always kept; up to `background_blocks`
+    site-free blocks per transcript are kept (seeded), so positives are enriched relative to the genome.
+    """
+    tok = GenomicTokenizer()
+    rng = random.Random(seed)
+    rows = []
+    for t in transcripts:
+        # Oriented first-base reference coordinate of every site on this transcript.
+        shift = 0 if t.strand == "+" else 1
+        sites = [(p + shift, LABEL_DONOR) for p in t.donors()] + [(p + shift, LABEL_ACCEPTOR) for p in t.acceptors()]
+        starts = list(range(t.start, t.end, block))
+        with_site = [bs for bs in starts if any(bs <= q < bs + block for q, _ in sites)]
+        without = [bs for bs in starts if bs not in with_site]
+        chosen = sorted(with_site + rng.sample(without, min(background_blocks, len(without))))
+        for bs in chosen:
+            labels = [LABEL_NEITHER] * block
+            for q, lab in sites:
+                if bs <= q < bs + block:
+                    labels[q - bs] = lab
+            seq = genome.fetch(t.chrom, bs - context, bs + block + context)
+            if t.strand == "-":
+                seq = tok.reverse_complement(seq)
+                labels = labels[::-1]
+            rows.append({
+                "gene_id": t.gene_name or t.gene_id,
+                "transcript_id": t.transcript_id,
+                "chrom": t.chrom,
+                "strand": t.strand,
+                "block_start": bs,
+                "context": context,
+                "window_size": block + 2 * context,
+                "window_sequence": seq,
+                "donor_count": labels.count(LABEL_DONOR),
+                "acceptor_count": labels.count(LABEL_ACCEPTOR),
+                "labels": labels,
+            })
+    return pl.DataFrame(rows)
